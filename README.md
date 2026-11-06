@@ -156,11 +156,3 @@ GUI 使用 Windows 自带 .NET Framework 显示界面，后台脚本以隐藏窗
 | `build`、`target` | 测试/Maven 运行后产生的可再生成中间文件，不属于源码或交付包。测试结束并确认不需要排查后可清理。 |
 
 `build.cmd` 会在本次编译结束后删除自己的临时 class 目录；`package.cmd` 按明确清单直接生成 ZIP，不再保留 `release-*` 源码副本。审计结论、实际删除项和回归结果见 [项目审计记录](docs/项目审计记录.md)。该记录反映清理时的项目结构；本轮新增的 GUI 和后台检测是当前功能所需文件。
-
-
-## 发布更新包约定（维护人员）
-
-- 维护 `pom.xml` 与 `gui/app-info.cs` 的版本保持一致，稳定标签使用 `v主版本.次版本.补丁`，如 `v2.1.0`。
-- 执行本地构建/测试/打包后，在 GitHub Release 附加完整 ZIP，文件名使用 `lucanet-client-enhancement.zip` 或 `lucanet-client-enhancement-v2.1.0.zip`；不要只上传源码压缩包或单独 EXE。
-- 更新模块使用 GitHub Release asset 的 `digest: sha256:...`。未提供该摘要时不在应用内下载/执行更新，用户可查看发布页面。
-- 本次仅修改本地工作区和交付包；未执行 Git 推送，也未创建 GitHub 发布。
