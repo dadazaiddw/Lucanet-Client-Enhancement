@@ -35,6 +35,12 @@ try {
     $lockedHandle.Dispose()
 }
 if ([IO.File]::ReadAllText($lockedFile) -ne 'keep locked content') { throw 'Locked source content changed.' }
-& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.exit.logDir=$logs" "-Dlucanet.exit.archiveDir=$archive" "-Dfixture.tempDir=$temp" -cp "$classes;$agent" com.lucanet.lnswmgr_ui.NativeLaunchTest
+& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.exit.logDir=$logs" "-Dlucanet.exit.archiveDir=$archive" "-Dfixture.tempDir=$temp" -cp "$classes;$agent" com.lucanet.lnswmgr_ui.NativeLaunchTest
 if ($LASTEXITCODE -ne 0) { throw 'Native startup propagation / built-in exit handling test failed.' }
+& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.DialogIsolationTest
+if ($LASTEXITCODE -ne 0) { throw 'Session-state independence / non-client isolation test failed.' }
 Write-Host "All tests passed. Evidence: $testRoot"
+& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\features.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.NavigationTest
+if ($LASTEXITCODE -ne 0) { throw 'Live navigation feature tests failed.' }
+& $java -cp "$classes;$agent" cn.lucanet.enhancement.exit.HotUpdateTest (Join-Path $testRoot 'hot update 中文') $agent
+if ($LASTEXITCODE -ne 0) { throw 'Hot update transaction tests failed.' }

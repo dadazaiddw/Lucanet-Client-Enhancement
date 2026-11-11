@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>cn.lucanet.enhancement</groupId>
   <artifactId>client-enhancement</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <properties>
     <maven.compiler.release>11</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -33,6 +33,8 @@
             <manifestEntries>
               <Premain-Class>cn.lucanet.enhancement.exit.ExitAgent</Premain-Class>
               <Can-Retransform-Classes>true</Can-Retransform-Classes>
+              <Implementation-Version>${project.version}</Implementation-Version>
+              <Enhancement-Hot-Protocol>1</Enhancement-Hot-Protocol>
             </manifestEntries>
           </archive>
         </configuration>

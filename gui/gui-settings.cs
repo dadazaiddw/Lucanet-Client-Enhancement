@@ -17,6 +17,7 @@ internal sealed class GuiSettingsStore {
     internal const int MaximumSeconds = 300;
     private readonly string path;
     internal GuiSettingsStore(string path) { this.path = path; }
+    internal FeatureSettingsStore Features { get { return new FeatureSettingsStore(Path.Combine(Path.GetDirectoryName(path), "features.properties")); } }
     internal static GuiSettingsStore ForCurrentUser() {
         return new GuiSettingsStore(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Lucanet", "ClientEnhancement", "ui.json"));
@@ -40,6 +41,32 @@ internal sealed class GuiSettingsStore {
             File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(settings), new UTF8Encoding(false));
             if (File.Exists(path)) File.Replace(temporary, path, null);
             else File.Move(temporary, path);
+        } finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+}
+
+// 与 Java 端共享的即时配置，独立于窗口/刷新偏好，避免刷新设置覆盖功能开关。
+internal sealed class FeatureSettingsStore {
+    private readonly string path;
+    internal FeatureSettingsStore(string path) { this.path = path; }
+    internal bool LoadLinksInNewWindow() {
+        if (!File.Exists(path)) return true;
+        foreach (string line in File.ReadAllLines(path, Encoding.UTF8)) {
+            if (line.Trim().StartsWith("linksInNewWindow=", StringComparison.Ordinal))
+                return line.Trim().Substring("linksInNewWindow=".Length).Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+        }
+        return true;
+    }
+    internal void SaveLinksInNewWindow(bool enabled) {
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        var lines = new System.Collections.Generic.List<string>();
+        if (File.Exists(path)) foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
+            if (!line.Trim().StartsWith("linksInNewWindow=", StringComparison.Ordinal)) lines.Add(line);
+        lines.Add("linksInNewWindow=" + (enabled ? "true" : "false"));
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try {
+            File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
+            if (File.Exists(path)) File.Replace(temporary, path, null); else File.Move(temporary, path);
         } finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 }

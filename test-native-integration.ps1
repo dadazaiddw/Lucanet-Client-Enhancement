@@ -18,11 +18,11 @@ $nativeText=[IO.File]::ReadAllText($config)
 $nativeText=[regex]::Replace($nativeText, '(?m)^'+[regex]::Escape($installedOption)+'\r?\n?', '')
 [IO.File]::WriteAllText($inputConfig,$nativeText,[Text.UTF8Encoding]::new($false))
 # 使用真实 named modules，额外验证模块到 bootstrap Agent 的访问。
-& $jdk.Java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.exit.logDir=$work\logs" --module-path $modulePath --add-modules ALL-MODULE-PATH -cp $work RealNativeConfigTest $LucanetHome $inputConfig $work
+& $jdk.Java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.exit.logDir=$work\logs" --module-path $modulePath --add-modules ALL-MODULE-PATH -cp $work RealNativeConfigTest $LucanetHome $inputConfig $work
 if($LASTEXITCODE -ne 0){throw 'Real native configuration integration failed.'}
 # 选取同一套新版本基础/UI 依赖，其他库仅作链接补充，避免先加载缓存旧版本。
 $preferred=@(Get-ChildItem -LiteralPath $ResourceDirectory -File | Where-Object { $_.Name -match '^(ln\..*-(17\.15\.3|28\.2\.0)-|lisa-6\.8\.0-|base-11\.4\.0-|file-7\.0\.0-)' } | ForEach-Object FullName)
 $classpath=(@($work,$agent)+$preferred+@((Join-Path $ResourceDirectory '*'))) -join ';'
-& $jdk.Java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath RealDialogTest
+& $jdk.Java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath RealDialogTest
 if($LASTEXITCODE -ne 0){throw 'Real dialog suppression integration failed.'}
 Write-Host "Native integration evidence: $work"

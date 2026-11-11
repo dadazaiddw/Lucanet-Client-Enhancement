@@ -13,6 +13,8 @@ internal sealed partial class EnhancementForm {
     private Button checkUpdatesButton, downloadUpdateButton, openUpdateButton;
     private TableLayoutPanel updateActionRow;
     private CheckBox autoCheckUpdates;
+    private CheckBox linksInNewWindow;
+    private bool restoringLinkSetting;
     private IUpdateService updateService;
     private ReleaseUpdate release;
     private bool updateChecking, updateDownloading, updateInstalling;
@@ -177,7 +179,7 @@ internal sealed partial class EnhancementForm {
         hero.Controls.Add(heading, 1, 0); AddAutoRow(identityCard, hero); AddAutoRow(stack, identityCard);
 
         var updateCard = SettingsCard("applicationUpdateCard");
-        AddSectionHeading(updateCard, "版本与更新", "从 GitHub Releases 检查稳定版本，下载完成后由你选择打开。" );
+        AddSectionHeading(updateCard, "版本与更新", "从 GitHub Releases 检查稳定版本，下载校验后可应用热更新。" );
         checkUpdatesButton = MakeButton("检查更新", true, 112); checkUpdatesButton.Name = "checkUpdates";
         checkUpdatesButton.Click += async delegate { await CheckForUpdatesAsync(true); };
         updateStatus = SettingsLabel("尚未检查更新", 10, false, Muted, "updateStatus");
@@ -189,7 +191,7 @@ internal sealed partial class EnhancementForm {
         checkRow.Controls.Add(updateStatus, 0, 0); checkRow.Controls.Add(checkUpdatesButton, 1, 0); AddAutoRow(updateCard, checkRow);
         downloadUpdateButton = MakeButton("下载更新", false, 112); downloadUpdateButton.Name = "downloadUpdate";
         downloadUpdateButton.Click += async delegate { await DownloadUpdateAsync(); };
-        openUpdateButton = MakeButton("打开新版本", false, 126); openUpdateButton.Name = "openUpdate";
+        openUpdateButton = MakeButton("应用热更新", false, 126); openUpdateButton.Name = "openUpdate";
         openUpdateButton.Click += async delegate { await OpenDownloadedVersionAsync(); };
         updateActionRow = ButtonRow(downloadUpdateButton, openUpdateButton); updateActionRow.Name = "updateActions";
         updateActionRow.Margin = new Padding(0, 0, 0, 12); AddAutoRow(updateCard, updateActionRow);
@@ -213,6 +215,22 @@ internal sealed partial class EnhancementForm {
 
     private void BuildFeatureSettings() {
         var stack = SettingsStack(featurePage);
+        var navigationCard = SettingsCard("featureNavigationCard");
+        AddSectionHeading(navigationCard, "链接导航", "控制外部链接在 Lucanet 客户端中的打开方式。" );
+        bool enabled = true;
+        try { enabled = settingsStore.Features.LoadLinksInNewWindow(); } catch (IOException) { enabled = false; } catch (UnauthorizedAccessException) { enabled = false; }
+        linksInNewWindow = new SettingToggle { Name = "linksInNewWindow", Checked = enabled,
+            AccessibleName = "链接在新窗口中打开", Anchor = AnchorStyles.Right };
+        linksInNewWindow.CheckedChanged += delegate {
+            if (restoringLinkSetting) return;
+            try { settingsStore.Features.SaveLinksInNewWindow(linksInNewWindow.Checked); }
+            catch (Exception e) {
+                restoringLinkSetting = true; linksInNewWindow.Checked = !linksInNewWindow.Checked; restoringLinkSetting = false;
+                ShowMessage("功能设置未保存，已保留原开关状态：" + e.Message, MessageBoxIcon.Warning);
+            }
+        };
+        AddAutoRow(navigationCard, SettingRow("链接在新窗口中打开", "ln:goto/LNFC 的 OID 链接先新建窗口再跳转。切换后下一次链接立即生效。", linksInNewWindow));
+        AddAutoRow(stack, navigationCard);
         var card = SettingsCard("featureRefreshCard");
         AddSectionHeading(card, "状态刷新", "配置工作区的状态检查频率，设置立即生效。" );
         autoRefresh = new SettingToggle { Name = "autoRefresh", Checked = preferences.AutoRefresh,
@@ -226,7 +244,7 @@ internal sealed partial class EnhancementForm {
         AddAutoRow(card, SettingRow("刷新间隔", "2–300 秒，默认 8 秒；关闭自动刷新后仍可手动检查。", interval));
         AddAutoRow(stack, card);
         var reset = MakeButton("恢复功能默认设置", false, 170); reset.Name = "resetFeatureSettings";
-        reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; SaveRefreshPreferences(); };
+        reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true; SaveRefreshPreferences(); };
         AddAutoRow(stack, ButtonRow(reset));
     }
 
@@ -285,9 +303,18 @@ internal sealed partial class EnhancementForm {
     }
     private async Task OpenDownloadedVersionAsync() {
         if(String.IsNullOrEmpty(downloadedDirectory)||closing||foregroundBusy)return;
-        if(MessageBox.Show(this,"将从已校验的完整更新目录打开新版本，并关闭当前窗口。Lucanet 中已安装的增强需要在新版本工作区点击“安装”更新。", "打开新版本",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
+        if(MessageBox.Show(this,"将应用已校验的新版本，并切换到新版管理界面。已安装 v1.0.1 及以上兼容版本的客户端可保持登录；旧版本会提示正常关闭后安装。", "应用热更新",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
         updateInstalling=true;requestGeneration++;poll.Stop();UpdateButtons();
         try{
+            string candidateVersion = FileVersionInfo.GetVersionInfo(Path.Combine(downloadedDirectory,"enhancement.exe")).ProductVersion;
+            if (GitHubUpdateService.ParseVersion(candidateVersion) != GitHubUpdateService.ParseVersion(release.Version))
+                throw new InvalidDataException("更新包内的软件版本与发布版本不一致，已停止更新。");
+            // 使用下载包自己的后台服务，更新已安装 Agent 及当前 JVM 后才交接 GUI。
+            // 没有选中安装目录时只切换 GUI；不会猜测并修改其他安装。
+            if (!String.IsNullOrWhiteSpace(directories.Text)) {
+                var nextService = new PowerShellEnhancementService(downloadedDirectory);
+                await nextService.InvokeAsync("update", directories.Text.Trim());
+            }
             var process=Process.Start(new ProcessStartInfo(Path.Combine(downloadedDirectory,"enhancement.exe")){UseShellExecute=true,WorkingDirectory=downloadedDirectory,Arguments=String.IsNullOrWhiteSpace(directories.Text)?"":"--directory "+GuiData.Quote(directories.Text)});
             bool ready=await Task.Run(delegate{using(process){if(process==null)return false;var watch=Stopwatch.StartNew();while(watch.ElapsedMilliseconds<15000){if(process.HasExited)return false;process.Refresh();if(process.MainWindowHandle!=IntPtr.Zero)return true;System.Threading.Thread.Sleep(100);}return false;}});
             if(ready){allowRelaunchClose=true;Close();}else ShowMessage("新版本未能启动，当前窗口继续保留。",MessageBoxIcon.Warning);

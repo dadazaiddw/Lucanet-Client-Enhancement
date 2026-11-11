@@ -90,6 +90,17 @@ function Get-ClientEnhancementStatus([string]$LucanetHome,[string]$LogDirectory=
     $sourceJar=Join-Path $script:GuiPackageRoot 'dist\client-enhancement.jar'
     $expectedLine='jdkParameter=-javaagent:'+$installedJar
     $configs=@();$problems=@()
+    $effectiveJar=$installedJar
+    $activePointer=Join-Path $root '.client-enhancement\active.properties'
+    if(Test-Path -LiteralPath $activePointer -PathType Leaf){
+        try{
+            $activeText=[IO.File]::ReadAllText($activePointer)
+            $digest=[regex]::Match($activeText,'(?m)^sha256=([a-f0-9]{64})\r?$')
+            if(-not $digest.Success){throw '热更新版本指针无效，请关闭 Lucanet 后重新安装。'}
+            $effectiveJar=Join-Path $root ('.client-enhancement\versions\'+$digest.Groups[1].Value+'.jar')
+            if((Get-ClientEnhancementHash $effectiveJar) -ine $digest.Groups[1].Value){throw '热更新版本校验失败，请关闭 Lucanet 后重新安装。'}
+        }catch{$problems+=$_.Exception.Message}
+    }
     foreach($release in Get-ChildItem -LiteralPath $root -Directory -Force | Where-Object Name -match '^\.\d+\+\d+$'){
         foreach($name in @('LucaNetSoftwareManager.ln10','LucaNetKickStart.ln10')){
             $path=Join-Path $release.FullName $name
@@ -110,12 +121,12 @@ function Get-ClientEnhancementStatus([string]$LucanetHome,[string]$LogDirectory=
     if(Test-Path -LiteralPath $installedJar -PathType Leaf){
         try{
             Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $zip=[IO.Compression.ZipFile]::OpenRead($installedJar)
+            $zip=[IO.Compression.ZipFile]::OpenRead($effectiveJar)
             try{
                 $required=@('cn/lucanet/enhancement/exit/ExitAgent.class','cn/lucanet/enhancement/exit/NativeBridge.class','cn/lucanet/enhancement/exit/NativeTransformer.class','cn/lucanet/enhancement/internal/asm/ClassReader.class')
                 $installedValid=@($required|Where-Object {$null -eq $zip.GetEntry($_)}).Count -eq 0
             }finally{$zip.Dispose()}
-            if($installedValid -and (Test-Path -LiteralPath $sourceJar)){$current=(Get-ClientEnhancementHash $installedJar) -eq (Get-ClientEnhancementHash $sourceJar)}
+            if($installedValid -and $problems.Count -eq 0 -and (Test-Path -LiteralPath $sourceJar)){$current=(Get-ClientEnhancementHash $effectiveJar) -eq (Get-ClientEnhancementHash $sourceJar)}
         }catch{$problems+='已安装的增强包无法读取或已损坏。'}
     }
     $state=if($enabled -eq 0){'not-installed'}elseif($enabled -eq $configs.Count -and $installedValid -and $problems.Count -eq 0){'installed'}else{'partial'}
@@ -133,10 +144,13 @@ function Get-ClientEnhancementStatus([string]$LucanetHome,[string]$LogDirectory=
     # 仅选择日志中 Agent 路径匹配本安装目录的记录；历史记录与当前运行证据分开。
     foreach($file in Get-ChildItem -LiteralPath $LogDirectory -Filter 'client-exit-*.log' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 24){
         try{
-            $head=@(Get-Content -LiteralPath $file.FullName -Encoding UTF8 -TotalCount 8)
+            # Windows PowerShell 5.1 的 Get-Content 会给字符串附加 PSDrive/PSProvider 等对象。
+            # 必须在边界处转为普通字符串，否则 ConvertTo-Json -Depth 12 会递归展开
+            # 文件系统元数据，出现状态检查已完成、GUI 却一直等待 JSON 的假死。
+            $head=@(Get-Content -LiteralPath $file.FullName -Encoding UTF8 -TotalCount 8 | ForEach-Object {$_.ToString()})
             $agentRecords=@($head|Where-Object {$_ -match 'AGENT_ACTIVE:' -and $_.EndsWith('jar='+$installedJar,[StringComparison]::OrdinalIgnoreCase)})
             if($agentRecords.Count -eq 0){continue}
-            $tail=@(Get-Content -LiteralPath $file.FullName -Encoding UTF8 -Tail 100)
+            $tail=@(Get-Content -LiteralPath $file.FullName -Encoding UTF8 -Tail 100 | ForEach-Object {$_.ToString()})
             $pidNumber=[int]([regex]::Match($file.Name,'client-exit-(\d+)').Groups[1].Value)
             $active=$processes|Where-Object {$_.Id -eq $pidNumber -and $_.Matched}|Select-Object -First 1
             if($active){
@@ -152,11 +166,12 @@ function Get-ClientEnhancementStatus([string]$LucanetHome,[string]$LogDirectory=
                     $stamp=[DateTimeOffset]::Parse(($line -split ' ')[0])
                     if(-not $latestExit -or $stamp -gt [DateTimeOffset]::Parse($latestExit.Time)){$latestExit=[pscustomobject]@{Time=$stamp.ToString('o');Log=$file.FullName}}
                 }
-                if($line -match 'EXIT_DIALOG_SUPPRESSED'){
+                # 兼容旧版退出专用日志与覆盖会话过期后的新日志。
+                if($line -match '\b(?:TEMP_FILE|EXIT)_DIALOG_SUPPRESSED:'){
                     $stamp=[DateTimeOffset]::Parse(($line -split ' ')[0])
                     if(-not $latestSuppressed -or $stamp -gt [DateTimeOffset]::Parse($latestSuppressed.Time)){$latestSuppressed=[pscustomobject]@{Time=$stamp.ToString('o');Log=$file.FullName}}
                 }
-                if($line -match 'UNSUPPORTED_CLASS|TRANSFORM_FAILED|AGENT_DISABLED'){$runtimeErrors += $line}
+                if($line -match 'UNSUPPORTED_CLASS|TRANSFORM_FAILED|AGENT_DISABLED|HOT_UPDATE_UNAVAILABLE|ACTIVE_MODULE_INVALID|LINK_NEW_WINDOW_FAILED|BRIDGE_FAILED'){$runtimeErrors += $line}
             }
         }catch{ }
     }

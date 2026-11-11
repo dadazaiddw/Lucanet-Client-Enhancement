@@ -63,9 +63,41 @@ $result=Call-Service 'install';Assert-Gui $result.Ok 'GUI reinstall after uninst
 [IO.File]::WriteAllText((Join-Path $logs 'client-exit-987654.log'),"2026-11-05T12:00:00Z [INFO] [pid=987654] AGENT_ACTIVE: jar=$agent`n2026-11-05T12:01:00Z [INFO] [pid=987654] EXIT_ARCHIVE_FINISHED`n")
 $status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
 Assert-Gui ($status.Loaded.Count -eq 0 -and $null -ne $status.LatestExit) 'historical exit is separate from current activation'
+$evidenceLog=Join-Path $logs 'client-exit-987654.log'
+[IO.File]::AppendAllText($evidenceLog,"2026-11-05T12:02:00Z [INFO] [pid=987654] EXIT_DIALOG_SUPPRESSED: remaining file kept in place`n")
+$status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
+Assert-Gui ($null -ne $status.LatestSuppressed -and ([DateTimeOffset]::Parse($status.LatestSuppressed.Time)).UtcDateTime.Minute -eq 2) 'legacy suppression evidence remains visible'
+[IO.File]::AppendAllText($evidenceLog,"2026-11-05T12:03:00Z [INFO] [pid=987654] TEMP_FILE_DIALOG_SUPPRESSED: Financial Client unknown temporary file kept in place`n")
+$status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
+Assert-Gui ($null -ne $status.LatestSuppressed -and ([DateTimeOffset]::Parse($status.LatestSuppressed.Time)).UtcDateTime.Minute -eq 3) 'session-timeout suppression evidence visible'
+# 现场回归：有运行错误时，Get-Content 的扩展字符串绝不能进入 JSON。
+# 先检查属性，旧实现会在这里快速失败，不让回归测试也陷入序列化假死。
+$errorLine='2026-11-11T00:00:00Z [ERROR] [pid=987654] LINK_NEW_WINDOW_FAILED: 中文日志'
+[IO.File]::AppendAllText($evidenceLog,$errorLine+"`n")
+$status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
+Assert-Gui ($status.RuntimeErrors.Count -eq 1) 'runtime error included for diagnostics'
+Assert-Gui (@($status.RuntimeErrors[0].PSObject.Properties | Where-Object Name -match '^PS(Path|ParentPath|ChildName|Drive|Provider)$').Count -eq 0) 'runtime error is plain text, not provider metadata'
+$jsonWatch=[Diagnostics.Stopwatch]::StartNew()
+$serialized=@{Ok=$true;Data=$status}|ConvertTo-Json -Depth 12 -Compress
+$parsed=$serialized | ConvertFrom-Json
+Assert-Gui ($jsonWatch.ElapsedMilliseconds -lt 2000 -and $serialized.Length -lt 20000) 'error JSON serializes promptly with bounded payload'
+Assert-Gui ($parsed.Data.RuntimeErrors[0] -is [string] -and $parsed.Data.RuntimeErrors[0] -eq $errorLine) 'JSON preserves error string and Chinese text'
+Assert-Gui ($serialized -notmatch 'PSProvider|PSDrive|PSParentPath') 'no recursive PowerShell provider graph in JSON'
 Remove-Item -LiteralPath $agent -Force
 $status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
 Assert-Gui ($status.State -eq 'partial' -and -not $status.InstalledValid) 'configured but missing JAR is not effective'
 $result=Call-Service 'install';Assert-Gui $result.Ok 'repair missing installed JAR'
+# 状态检查要识别热更新指针；普通离线安装必须清除旧指针。
+$versions=Join-Path $fake '.client-enhancement\versions';New-Item -ItemType Directory -Path $versions -Force|Out-Null
+$digest=(Get-ClientEnhancementHash $agent).ToLowerInvariant()
+Copy-Item -LiteralPath $agent -Destination (Join-Path $versions ($digest+'.jar'))
+$pointer=Join-Path $fake '.client-enhancement\active.properties'
+[IO.File]::WriteAllText($pointer,"sha256=$digest`nversion=1.0.1`n")
+$status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
+Assert-Gui ($status.Current -and $status.State -eq 'installed') 'active hot-update version is current'
+[IO.File]::WriteAllText($pointer,'sha256=invalid')
+$status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
+Assert-Gui ($status.State -eq 'partial' -and -not $status.Current) 'invalid active pointer is not effective'
+$result=Call-Service 'update';Assert-Gui ($result.Ok -and -not(Test-Path -LiteralPath $pointer)) 'offline update repairs pointer'
 $result=Call-Service 'uninstall';Assert-Gui $result.Ok 'final fixture uninstall'
 Write-Host "PASS: discovery, manual selection, Lucanet JDK, JSON service install/uninstall/reinstall, running protection, evidence separation and repair ($work)"

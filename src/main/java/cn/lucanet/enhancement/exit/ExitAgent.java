@@ -18,12 +18,15 @@ public final class ExitAgent {
             File jar = new File(connection.getJarFileURL().toURI());
             // 使用实际安装路径动态加入 bootstrap，不将构建时 JAR 文件名写死在 manifest。
             // Runtime 和桥接类只由 bootstrap 加载；原生模块可见同一个固定实现。
-            instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(jar));
+            // bootstrap 读取不可变快照，安装位置的 JAR 才能在运行中原子替换。
+            java.nio.file.Path copy = HotUpdateFiles.snapshot(jar.toPath());
+            instrumentation.appendToBootstrapClassLoaderSearch(new JarFile(copy.toFile()));
             Class.forName("cn.lucanet.enhancement.exit.AgentRuntime", true, null)
                     .getMethod("start", Instrumentation.class, String.class)
                     .invoke(null, instrumentation, jar.getAbsolutePath());
         } catch (Exception | LinkageError failure) {
             System.err.println("[client-enhancement] AGENT_DISABLED: " + failure);
+            failure.printStackTrace(System.err);
         }
     }
 }

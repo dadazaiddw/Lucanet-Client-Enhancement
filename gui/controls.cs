@@ -81,6 +81,7 @@ internal class SettingToggle : CheckBox {
 }
 
 internal sealed class AppMark : Control {
+    private readonly Icon clientIcon = ClientIcon.Load();
     internal AppMark() {
         Size = new Size(72,72);
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
@@ -91,15 +92,18 @@ internal sealed class AppMark : Control {
         return new Size(edge, edge);
     }
     protected override void OnPaint(PaintEventArgs e) {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        float edge = Math.Min(ClientSize.Width, ClientSize.Height);
-        float x = (ClientSize.Width - edge) / 2F, y = (ClientSize.Height - edge) / 2F;
-        using (var background = new SolidBrush(Color.FromArgb(240, 232, 250))) e.Graphics.FillRectangle(background, x, y, edge, edge);
-        using (var navy = new SolidBrush(Color.FromArgb(0,43,61))) {
-            e.Graphics.FillRectangle(navy,x+edge*.24F,y+edge*.22F,edge*.16F,edge*.55F);
-            e.Graphics.FillRectangle(navy,x+edge*.24F,y+edge*.61F,edge*.51F,edge*.16F);
+        int edge = Math.Min(ClientSize.Width, ClientSize.Height);
+        e.Graphics.DrawIcon(clientIcon, new Rectangle((ClientSize.Width-edge)/2, (ClientSize.Height-edge)/2, edge, edge));
+    }
+    protected override void Dispose(bool disposing) { if (disposing) clientIcon.Dispose(); base.Dispose(disposing); }
+}
+
+internal static class ClientIcon {
+    internal static Icon Load() {
+        using (var stream = typeof(ClientIcon).Assembly.GetManifestResourceStream("Lucanet.ClientIcon")) {
+            if (stream == null) return (Icon)SystemIcons.Application.Clone();
+            using (var icon = new Icon(stream, 32, 32)) return (Icon)icon.Clone();
         }
-        using (var purple = new SolidBrush(Color.FromArgb(149,71,211))) e.Graphics.FillRectangle(purple,x+edge*.48F,y+edge*.22F,edge*.27F,edge*.27F);
     }
 }
 

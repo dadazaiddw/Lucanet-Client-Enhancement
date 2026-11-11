@@ -58,20 +58,22 @@ public final class NativeBridge {
         }
     }
 
-    /** 仅在退出阶段屏蔽“未知文件”对话框；运行/启动阶段和其他业务对话框保留原行为。 */
-    public static boolean suppressExitDialog(Class<?> dialogClass) {
+    /**
+     * 仅处理 Financial Client 的 UnknownFileDialogCreator，不依赖应用生命周期状态。
+     * 登录过期/会话超时时 JVM 可能仍为 RUNNING，也可能已释放 Application 状态，
+     * 因而不能用 PREPARE_STOP 等退出状态作为前提。此处只返回 KEEP，不读写业务文件；
+     * 全量归档仍由 beforeStop 在真正退出时执行。
+     */
+    public static boolean suppressTemporaryFileDialog(Class<?> dialogClass) {
         try {
-            ClassLoader loader = dialogClass.getClassLoader();
-            if (!isFinancialClient(loader)) { return false; }
-            String current = state(Class.forName("ln.application.Application", false, loader));
-            if (current.equals("PREPARE_STOP") || current.equals("STOPPING") || current.equals("DISPOSING")) {
-                EnhancementLog.info("EXIT_DIALOG_SUPPRESSED: remaining file kept in place");
-                return true;
-            }
-        } catch (Exception | LinkageError failure) {
-            EnhancementLog.error("DIALOG_STATE_UNAVAILABLE", failure);
+            if (!isFinancialClient(dialogClass.getClassLoader())) { return false; }
+        } catch (RuntimeException | LinkageError failure) {
+            // 无法确认客户端身份时保留原行为，不能扩大到 Manager/服务端等进程。
+            EnhancementLog.error("DIALOG_CLIENT_UNAVAILABLE", failure);
+            return false;
         }
-        return false;
+        EnhancementLog.info("TEMP_FILE_DIALOG_SUPPRESSED: Financial Client unknown temporary file kept in place");
+        return true;
     }
 
     private static String state(Class<?> application) throws ReflectiveOperationException {

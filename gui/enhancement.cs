@@ -59,6 +59,7 @@ internal sealed partial class EnhancementForm : Form {
         initialRoot = args.Length >= 2 && args[0] == "--directory" ? args[1] : "";
         SuspendLayout(); AutoScaleDimensions = new SizeF(96F, 96F); AutoScaleMode = AutoScaleMode.Dpi;
         Text = "Lucanet Client Enhancement";
+        Icon = ClientIcon.Load();
         ClientSize = new Size(1080, 720); MinimumSize = new Size(1000, 620);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(246, 248, 250); ForeColor = Ink;
@@ -97,6 +98,7 @@ internal sealed partial class EnhancementForm : Form {
         if (foregroundBusy || relaunching || closing) return;
         requestGeneration++; SetForeground(true);
         string selected = String.IsNullOrWhiteSpace(initialRoot) ? directories.Text : initialRoot; initialRoot = "";
+        Exception failure = null;
         try {
             var response = await service.InvokeAsync("discover", ""); if (closing) return;
             var candidates = GuiData.Items(GuiData.ValueOf(response, "Data"));
@@ -105,8 +107,9 @@ internal sealed partial class EnhancementForm : Form {
             if (!String.IsNullOrWhiteSpace(selected)) directories.Text = selected;
             else if (directories.Items.Count > 0) directories.SelectedIndex = 0;
             selectionSource.Text = candidates.Length > 0 ? "找到 " + candidates.Length + " 个安装目录，可从列表切换或手动选择。" : "未自动找到安装目录，请点击“浏览…”选择。";
-        } catch (Exception e) { ShowMessage(e.Message, MessageBoxIcon.Error); }
+        } catch (Exception e) { failure = e; }
         finally { if (!closing) SetForeground(false); }
+        if (failure != null) { ShowMessage(failure.Message, MessageBoxIcon.Error); return; }
         if (!closing && !String.IsNullOrWhiteSpace(directories.Text)) await RefreshStatusAsync(false);
     }
 
@@ -129,6 +132,7 @@ internal sealed partial class EnhancementForm : Form {
         if (automatic && (refreshInProgress || !preferences.AutoRefresh || String.IsNullOrEmpty(lastCheckedRoot) || !SameRoot(directories.Text, lastCheckedRoot))) return;
         string directory = directories.Text.Trim();
         int generation = automatic ? requestGeneration : ++requestGeneration;
+        string message = null; MessageBoxIcon messageIcon = MessageBoxIcon.Warning;
         if (automatic) refreshInProgress = true; else SetForeground(true);
         try {
             var response = await service.InvokeAsync("status", directory);
@@ -136,17 +140,20 @@ internal sealed partial class EnhancementForm : Form {
             status = GuiData.Map(GuiData.ValueOf(response, "Data")); lastCheckedRoot = directory; RenderStatus(); UpdateButtons();
             if (!automatic) {
                 string[] problems = GuiData.Items(GuiData.ValueOf(status, "Problems")).Select(Convert.ToString).ToArray();
-                if (problems.Length > 0) ShowMessage(String.Join(Environment.NewLine, problems), MessageBoxIcon.Warning);
+                if (problems.Length > 0) message = String.Join(Environment.NewLine, problems);
             }
         } catch (Exception e) {
             if (!closing && !relaunching && generation == requestGeneration) {
                 status = null; ResetCards(); UpdateButtons();
-                if (!automatic) ShowMessage(e.Message, MessageBoxIcon.Error);
+                if (!automatic) { message = e.Message; messageIcon = MessageBoxIcon.Error; }
             }
         } finally {
             if (automatic) refreshInProgress = false;
             else if (!closing && !relaunching) SetForeground(false);
         }
+        // 先恢复光标/控件，再显示提示。用户阅读错误信息时界面不再残留忙碌状态。
+        if (message != null && !closing && !relaunching && generation == requestGeneration)
+            ShowMessage(message, messageIcon);
     }
 
     private async Task DeployAsync(bool uninstall) {
@@ -156,7 +163,7 @@ internal sealed partial class EnhancementForm : Form {
             var before = await service.InvokeAsync("status", directories.Text.Trim()); if (closing) return;
             status = GuiData.Map(GuiData.ValueOf(before, "Data")); RenderStatus();
             if (!GuiData.BoolOf(status, "CanModify")) { ShowMessage("请先正常关闭 Lucanet.Software Manager 和客户端。", MessageBoxIcon.Information); return; }
-            if (uninstall && MessageBox.Show(this, "卸载将停用退出增强，已归档文件和恢复备份会保留。", "卸载", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (uninstall && MessageBox.Show(this, "卸载将停用客户端增强，已归档文件和恢复备份会保留。", "卸载", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             deploymentInProgress = true;
             var response = await service.InvokeAsync(uninstall ? "uninstall" : "install", GuiData.TextOf(status, "Root"));
             var data = GuiData.Map(GuiData.ValueOf(response, "Data")); status = GuiData.Map(GuiData.ValueOf(data, "Status")); RenderStatus();

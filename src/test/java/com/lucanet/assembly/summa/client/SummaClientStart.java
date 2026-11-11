@@ -19,9 +19,28 @@ public final class SummaClientStart {
         write(root.resolve("tempClient/deep/nested.csv"), "nested report");
         write(root.resolve("no-extension"), "unknown name");
         Application.fire(ApplicationState.RUNNING);
-        if (UnknownFileDialogCreator.show("runtime-file") != 4 || UnknownFileDialogCreator.shown != 1) {
-            throw new AssertionError("Running-state dialog changed");
+        // 会话过期不一定停止 JVM：覆盖仍 RUNNING、会话重建/清理等所有状态。
+        // 每次检查源文件内容和归档数量，确保这里只静默 KEEP、不触发运行中归档。
+        for (ApplicationState state : ApplicationState.values()) {
+            Application.fire(state);
+            if (UnknownFileDialogCreator.show("expired-session-" + UUID.randomUUID()) != 3 || UnknownFileDialogCreator.shown != 0) {
+                throw new AssertionError("Unknown file dialog displayed in state=" + state);
+            }
+            if (countFiles(root) != 3 || countFiles(archive) != archivedBefore
+                    || !Files.readString(root.resolve("no-extension")).equals("unknown name")
+                    || !Files.readString(root.resolve("tempClient/deep/nested.csv")).equals("nested report")) {
+                throw new AssertionError("Dialog handling moved/deleted/changed a file in state=" + state);
+            }
         }
+        System.setProperty("fixture.stateUnavailable", "true");
+        try {
+            if (UnknownFileDialogCreator.show("session-state-unavailable") != 3 || UnknownFileDialogCreator.shown != 0) {
+                throw new AssertionError("Session-expired dialog incorrectly depends on Application state access");
+            }
+        } finally {
+            System.clearProperty("fixture.stateUnavailable");
+        }
+        Application.fire(ApplicationState.RUNNING);
         Application.stop();
         if (!Application.events.equals(List.of("unknown-file-check"))) {
             throw new AssertionError("Original check was not executed");
@@ -42,7 +61,7 @@ public final class SummaClientStart {
             throw new AssertionError("Missing built-in handling evidence: " + log);
         }
         Application.fire(ApplicationState.PREPARE_STOP);
-        if (UnknownFileDialogCreator.show("leftover-file") != 3 || UnknownFileDialogCreator.shown != 1) {
+        if (UnknownFileDialogCreator.show("leftover-file") != 3 || UnknownFileDialogCreator.shown != 0) {
             throw new AssertionError("Exit dialog was shown or did not keep the file");
         }
         // 模拟不可用归档位置：退出继续，所有源文件保留，弹窗静默返回保留。
@@ -53,10 +72,13 @@ public final class SummaClientStart {
         System.setProperty("fixture.allowRemaining", "true");
         Application.fire(ApplicationState.RUNNING);
         Application.stop();
-        if (!Files.readString(root.resolve("must-stay.txt")).equals("keep this content") || UnknownFileDialogCreator.shown != 1) {
+        if (!Files.readString(root.resolve("must-stay.txt")).equals("keep this content") || UnknownFileDialogCreator.shown != 0) {
             throw new AssertionError("Archive failure must keep file without showing exit dialog");
         }
-        System.out.println("PASS: all-file archive before checks, restart, exit dialog suppression, failed archive retains data; running dialog unchanged");
+        String finalLog = Files.readString(Path.of(System.getProperty("lucanet.exit.logDir"),
+                "client-exit-" + ProcessHandle.current().pid() + ".log"));
+        if (!finalLog.contains("TEMP_FILE_DIALOG_SUPPRESSED")) { throw new AssertionError("Missing temporary-file suppression record"); }
+        System.out.println("PASS: KEEP without UI in every client state and with unavailable session state; no runtime file changes; exit archive/restart/failure retained");
     }
 
     private static void write(Path file, String content) throws Exception {

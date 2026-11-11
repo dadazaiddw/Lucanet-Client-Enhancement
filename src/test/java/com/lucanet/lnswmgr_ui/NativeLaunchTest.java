@@ -15,7 +15,7 @@ public final class NativeLaunchTest {
         }
         String java = Path.of(System.getProperty("java.home"), "bin", "java.exe").toString();
         List<String> command = new ArrayList<>(List.of(java, option.substring("jdkParameter=".length()), "-Djava.awt.headless=true"));
-        for (String property : List.of("fixture.tempDir", "lucanet.exit.archiveDir", "lucanet.exit.logDir")) {
+        for (String property : List.of("fixture.tempDir", "lucanet.exit.archiveDir", "lucanet.exit.logDir", "lucanet.enhancement.runtime")) {
             command.add("-D" + property + "=" + System.getProperty(property));
         }
         command.addAll(List.of("-cp", System.getProperty("java.class.path"), client.replace('/', '.')));

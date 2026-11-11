@@ -52,6 +52,11 @@ internal static class WindowTests {
             var directory = (ComboBox)controls.Single(c => c.Name == "installationDirectory");
             var interval = (NumericUpDown)controls.Single(c => c.Name == "refreshSeconds");
             var automatic = (CheckBox)controls.Single(c => c.Name == "autoRefresh");
+            var links = (CheckBox)controls.Single(c => c.Name == "linksInNewWindow");
+            Check(links.Checked, "links default enabled");
+            links.Checked = false; Check(!store.Features.LoadLinksInNewWindow(), "new-window preference saved immediately");
+            links.Checked = true; Check(store.Features.LoadLinksInNewWindow(), "new-window preference re-enabled immediately");
+            using (var icon = ClientIcon.Load()) Check(icon.Width == 32, "embedded native client icon");
             var install = (Button)controls.Single(c => c.Name == "install");
             var workspace = controls.Single(c => c.Name == "workspacePage");
             Check(!All(workspace).Any(c => c.Name == "autoRefresh" || c.Name == "refreshSeconds" || c.Name == "refreshToolbar"), "workspace has no settings toolbar");
@@ -115,6 +120,7 @@ internal static class WindowTests {
         await VerifyRefreshLayout(work);
         await UpdateTests.Verify(work);
         await VerifyUpdatePage(work);
+        await ServiceTests.Verify(work);
         ToggleTests.Verify(Path.Combine(work,"toggles"));
     }
 
@@ -259,7 +265,7 @@ internal static class WindowTests {
         var blocks=content.Controls.Cast<Control>().Where(c=>c.Visible).OrderBy(c=>c.Top).ToArray();
         for(int i=1;i<blocks.Length;i++)Check(blocks[i].Top>=blocks[i-1].Bottom,scenario+": overlapping settings cards");
         if(page=="application") {
-            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.0",scenario+": application version fixed at 1.0.0");
+            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.1",scenario+": application version fixed at 1.0.1");
             var icon=All(panel).Single(c=>c.Name=="applicationIcon");
             var identity=All(panel).Single(c=>c.Name=="applicationIdentity");
             Check(icon.Bottom<=identity.Height,scenario+": icon fully contained in identity card");

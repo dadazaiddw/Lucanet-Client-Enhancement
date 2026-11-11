@@ -3,17 +3,15 @@ param([string]$JarName = 'client-enhancement.jar')
 $ErrorActionPreference = 'Stop'
 if ($JarName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.jar$') { throw 'JarName must be a simple .jar file name, without directories.' }
 $agent = Join-Path (Join-Path $PSScriptRoot 'dist') $JarName
-if (-not (Test-Path -LiteralPath $agent)) { throw 'Run test.ps1 before packaging.' }
+if (-not (Test-Path -LiteralPath $agent -PathType Leaf)) { throw 'Run test.ps1 before packaging.' }
+# 客户交付包只包含 GUI 的运行依赖。维护源码、文档、测试、命令行快捷入口均留在仓库。
+# 此清单同时对应 GUI 更新器 VerifyAndExtract 检查的完整运行包结构。
 $files = @(
-    'README.md', 'pom.xml', 'enhancement.exe', 'build-gui.ps1',
-    'build.ps1', 'build.cmd',
-    'test.ps1', 'test.cmd',
-    'test-real-lifecycle.ps1', 'test-real-lifecycle.cmd',
-    'test-native-integration.ps1', 'test-native-integration.cmd', 'test-install.ps1', 'test-gui.ps1', 'test-gui-window.ps1',
-    'test-jdk-selection.ps1', 'resolve-lucanet-jdk.ps1',
-    'maven.ps1', 'maven.cmd',
-    'package.ps1', 'package.cmd',
-    'install.ps1', 'install.cmd', 'uninstall.cmd', 'check.cmd'
+    'enhancement.exe',
+    'install.ps1',
+    'resolve-lucanet-jdk.ps1',
+    'tools/gui-core.ps1',
+    'tools/gui-service.ps1'
 )
 $archive = Join-Path $PSScriptRoot 'dist\lucanet-client-enhancement.zip'
 # 按交付白名单直接写 ZIP，不再生成一整份 release-* 源码/JAR 副本。
@@ -21,19 +19,26 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $entries = @()
 foreach ($file in $files) {
-    $path = Join-Path $PSScriptRoot $file
+    $path = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot $file))
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing delivery file: $file" }
     $entries += [pscustomobject]@{Path=$path;Name=$file}
 }
-foreach ($folder in @('src','docs','tools','licenses','gui')) {
-    $directory = Join-Path $PSScriptRoot $folder
-    if ((Get-Item -LiteralPath $directory -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Linked source directory is not supported.' }
-    if (@(Get-ChildItem -LiteralPath $directory -Recurse -Force -Attributes ReparsePoint).Count -gt 0) { throw 'Source tree contains a link.' }
-    foreach ($file in Get-ChildItem -LiteralPath $directory -Recurse -Force -File) {
-        $entries += [pscustomobject]@{Path=$file.FullName;Name=$file.FullName.Substring($PSScriptRoot.TrimEnd('\').Length+1).Replace('\','/')}
+$entries += [pscustomobject]@{Path=$agent;Name='dist/client-enhancement.jar'}
+$root = [IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
+foreach ($entry in $entries) {
+    $cursor = [IO.Path]::GetFullPath($entry.Path)
+    if (-not $cursor.StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Delivery source escaped project.' }
+    while ($cursor -ine $root) {
+        if ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Linked delivery source is not supported: $cursor" }
+        $cursor = Split-Path -Parent $cursor
     }
 }
-$entries += [pscustomobject]@{Path=$agent;Name='dist/client-enhancement.jar'}
+# 独立许可证文件不重复打包；交付 JAR 必须继续内嵌所使用的 ASM 许可证。
+$agentArchive = [IO.Compression.ZipFile]::OpenRead($agent)
+try {
+    $licenseEntry = $agentArchive.GetEntry('META-INF/ASM-LICENSE.txt')
+    if ($null -eq $licenseEntry -or $licenseEntry.Length -eq 0) { throw 'Agent JAR must include META-INF/ASM-LICENSE.txt.' }
+} finally { $agentArchive.Dispose() }
 $temporary = $archive + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
 try {
     $zip = [IO.Compression.ZipFile]::Open($temporary, [IO.Compression.ZipArchiveMode]::Create)
@@ -65,3 +70,4 @@ $checksumLines = foreach ($file in @($agent, (Join-Path $PSScriptRoot 'enhanceme
 }
 $checksumLines | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'dist\SHA256SUMS.txt') -Encoding ascii
 Write-Host "Packaged: $archive"
+Write-Host 'Runtime package: 6 files. Extract all files and open enhancement.exe.'

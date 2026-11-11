@@ -15,6 +15,9 @@ public final class Application {
     public static final List<String> events = new CopyOnWriteArrayList<>();
 
     public static ApplicationState getApplicationState() {
+        if (Boolean.getBoolean("fixture.stateUnavailable")) {
+            throw new IllegalStateException("Session has expired; application state unavailable");
+        }
         return state;
     }
 

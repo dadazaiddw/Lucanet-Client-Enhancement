@@ -27,7 +27,8 @@ $assembler = Join-Path $classes 'assembler'
 New-Item -ItemType Directory -Path $assembler -Force | Out-Null
 & $javac --release 11 -encoding UTF-8 -classpath "$asm;$asmCommons" -d $assembler (Join-Path $projectRoot 'tools\AssembleAgent.java')
 if ($LASTEXITCODE -ne 0) { throw 'Agent assembler compilation failed.' }
-& $jdk.Java -cp "$assembler;$asm;$asmCommons" AssembleAgent $classes $asm $outputJar (Join-Path $projectRoot 'licenses\ASM-LICENSE.txt')
+$version = ([xml](Get-Content -LiteralPath (Join-Path $projectRoot 'pom.xml') -Raw)).project.version
+& $jdk.Java -cp "$assembler;$asm;$asmCommons" AssembleAgent $classes $asm $outputJar (Join-Path $projectRoot 'licenses\ASM-LICENSE.txt') $version
 if ($LASTEXITCODE -ne 0) { throw 'JAR packaging failed.' }
 Write-Host "Built: $outputJar"
 & (Join-Path $PSScriptRoot 'build-gui.ps1')

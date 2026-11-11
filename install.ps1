@@ -31,6 +31,7 @@ $installRoot = (Resolve-Path -LiteralPath $LucanetHome -ErrorAction Stop).Path.T
 $installPrefix = $installRoot + '\'
 $extensionRoot = Join-Path $installRoot '.client-enhancement'
 $installedJar = Join-Path $extensionRoot 'client-enhancement.jar'
+$activePointer = Join-Path $extensionRoot 'active.properties'
 $agentLine = 'jdkParameter=-javaagent:' + $installedJar
 $sourceJar = Join-Path $PSScriptRoot 'dist\client-enhancement.jar'
 $utf8 = [Text.UTF8Encoding]::new($false, $true)
@@ -85,7 +86,7 @@ foreach ($release in $roots) {
     }
 }
 if ($plans.Count -eq 0) { throw 'No supported Software Manager/KickStart native launch configuration found.' }
-if (-not $Uninstall -and -not (Test-Path -LiteralPath $sourceJar -PathType Leaf)) { throw 'Missing dist/client-enhancement.jar; run build.cmd first.' }
+if (-not $Uninstall -and -not (Test-Path -LiteralPath $sourceJar -PathType Leaf)) { throw '交付包缺少 dist/client-enhancement.jar，请重新完整解压运行包。' }
 if (-not $Uninstall) {
     # JVM 会在启动期读取 Agent。安装前检查完整包，避免把缺类/未打包的 JAR 写入原启动配置。
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -112,6 +113,7 @@ $backupRoot = Join-Path $extensionRoot ('backups\' + (Get-Date -Format 'yyyyMMdd
 Assert-InstallationPath $backupRoot
 New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
 $oldJar = if (Test-Path -LiteralPath $installedJar) { [IO.File]::ReadAllBytes($installedJar) } else { $null }
+$oldPointer = if (Test-Path -LiteralPath $activePointer) { [IO.File]::ReadAllBytes($activePointer) } else { $null }
 foreach ($plan in $plans) {
     $backup = Join-Path $backupRoot $plan.Relative
     Assert-InstallationPath $backup
@@ -119,9 +121,14 @@ foreach ($plan in $plans) {
     [IO.File]::WriteAllBytes($backup, $plan.Before)
 }
 if ($null -ne $oldJar) { [IO.File]::WriteAllBytes((Join-Path $backupRoot 'previous-agent.jar'), $oldJar) }
+if ($null -ne $oldPointer) { [IO.File]::WriteAllBytes((Join-Path $backupRoot 'previous-active.properties'), $oldPointer) }
 $changed = @()
 try {
-    if (-not $Uninstall) { Write-Atomic $installedJar ([IO.File]::ReadAllBytes($sourceJar)) }
+    if (-not $Uninstall) {
+        Write-Atomic $installedJar ([IO.File]::ReadAllBytes($sourceJar))
+        Assert-InstallationPath $activePointer
+        if (Test-Path -LiteralPath $activePointer) { Remove-Item -LiteralPath $activePointer -Force }
+    }
     foreach ($plan in $plans) {
         Write-Atomic $plan.Path $plan.After
         $changed += $plan
@@ -131,10 +138,11 @@ try {
 } catch {
     foreach ($plan in $changed) { Write-Atomic $plan.Path $plan.Before }
     if ($null -ne $oldJar -and -not $Uninstall) { Write-Atomic $installedJar $oldJar }
+    if ($null -ne $oldPointer -and -not $Uninstall) { Write-Atomic $activePointer $oldPointer }
     throw
 }
 if ($Uninstall) { Write-Host 'Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.' }
 else { Write-Host 'Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.' }
 Write-Host "Backup: $backupRoot"
-Write-Host 'After a Software Manager upgrade, run install.cmd again for the new release configuration.'
+Write-Host 'After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.'
 if ($PassThru) { $status }

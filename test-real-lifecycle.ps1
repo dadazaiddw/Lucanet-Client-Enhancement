@@ -43,6 +43,6 @@ $classpath = ($jars + @($agent, $work)) -join ';'
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src\integration\java') -Recurse -Filter '*.java' | ForEach-Object FullName)
 & $javac --release 11 -encoding UTF-8 -cp $classpath -d $work @sources
 if ($LASTEXITCODE -ne 0) { throw 'Real-library test compilation failed.' }
-& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.exit.logDir=$work\logs" "-Dlucanet.exit.archiveDir=$work\archive" "-Dfixture.tempDir=$work\temp" -cp $classpath cn.lucanet.enhancement.exit.RealLifecycleTest
+& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.exit.logDir=$work\logs" "-Dlucanet.exit.archiveDir=$work\archive" "-Dfixture.tempDir=$work\temp" -cp $classpath cn.lucanet.enhancement.exit.RealLifecycleTest
 if ($LASTEXITCODE -ne 0) { throw 'Real-library lifecycle test failed.' }
 Write-Host "Real-library test passed. Evidence: $work"

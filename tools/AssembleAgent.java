@@ -13,6 +13,8 @@ public final class AssembleAgent {
         a.putValue("Manifest-Version", "1.0");
         a.putValue("Premain-Class", "cn.lucanet.enhancement.exit.ExitAgent");
         a.putValue("Can-Retransform-Classes", "true");
+        a.putValue("Implementation-Version", args[4]);
+        a.putValue("Enhancement-Hot-Protocol", "1");
         Remapper remapper = new Remapper() {
             public String map(String name) {
                 return name.startsWith("org/objectweb/asm/")
