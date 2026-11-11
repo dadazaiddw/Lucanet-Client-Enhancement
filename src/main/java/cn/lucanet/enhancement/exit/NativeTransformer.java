@@ -26,8 +26,9 @@ final class NativeTransformer implements ClassFileTransformer {
     private static final String STATE_DESCRIPTOR = "(L" + PANEL + "$State;)V";
     private static final String TASK_DESCRIPTOR = "(Lcom/lucanet/lisa/widgets/processlogger/ProcessLoggerTask;Ljava/lang/String;L" + PANEL + "$Hook;)V";
     private static final String SCRIPT_GENERAL="com/lucanet/summa/client/sections/script/panels/ScriptGeneralPanel";
-    private static final String TREE_CONTROLLER="com/lucanet/sarah/client/misc/HierarchyElementPopupController";
-    private static final String SCRIPT_POPUP="com.lucanet.summa.client.sections.script.controllers.ScriptPopupController";
+    private static final String EXPLORER_INTERACTION="com/lucanet/lisa/applicationframe/section/explorer/Explorer$c";
+    private static final String TREE_EVENT="com/lucanet/lisa/widgets/treetable/LNTreeTableUserInteractionEvent";
+    private static final String TREE_CONTEXT="com/lucanet/lisa/widgets/treetable/LNTreeTableContext";
     private static final String CELL="com/lucanet/lisa/widgets/treetable/LNTreeTableCell";
     private static final String DETAIL_CONTEXT="com/lucanet/lisa/applicationframe/context/DetailPanelContext";
     private static final String BRIDGE = "cn/lucanet/enhancement/exit/LiveBridge";
@@ -42,7 +43,7 @@ final class NativeTransformer implements ClassFileTransformer {
 
     static boolean isTarget(String name) {
         return APPLICATION.equals(name) || CONFIG.equals(name) || DIALOG.equals(name) || LINK.equals(name) || PANEL.equals(name)
-                || SCRIPT_GENERAL.equals(name) || TREE_CONTROLLER.equals(name);
+                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name);
     }
 
     @Override
@@ -50,7 +51,7 @@ final class NativeTransformer implements ClassFileTransformer {
                             ProtectionDomain domain, byte[] bytes) {
         if (!isTarget(name)) { return null; }
         try {
-            boolean scriptClass=PANEL.equals(name)||SCRIPT_GENERAL.equals(name)||TREE_CONTROLLER.equals(name);
+            boolean scriptClass=PANEL.equals(name)||SCRIPT_GENERAL.equals(name)||EXPLORER_INTERACTION.equals(name);
             if (scriptClass && !NativeBridge.isDesktopClient(loader)) { return null; }
             AgentRuntime.connectModule(instrumentation, module, name);
             ClassReader reader = new ClassReader(bytes);
@@ -78,7 +79,7 @@ final class NativeTransformer implements ClassFileTransformer {
                     boolean scriptState = PANEL.equals(name) && method.equals("a") && descriptor.equals(STATE_DESCRIPTOR);
                     boolean scriptTask = PANEL.equals(name) && method.equals("setProcessLoggerTask") && descriptor.equals(TASK_DESCRIPTOR);
                     boolean scriptGeneral=SCRIPT_GENERAL.equals(name) && method.equals("initGeneralPanel") && descriptor.equals("(Lcom/lucanet/lisa/applicationframe/section/detailpanel/DPSectionModel;)V");
-                    boolean scriptDoubleClick=TREE_CONTROLLER.equals(name) && method.equals("handlePostSelectionDoubleClick") && descriptor.equals("(L"+CELL+";)Z");
+                    boolean scriptDoubleClick=EXPLORER_INTERACTION.equals(name) && method.equals("userInteracted") && descriptor.equals("(L"+TREE_EVENT+";)V");
                     if (!stop && !config && !dialog && !link && !scriptState && !scriptTask && !scriptGeneral && !scriptDoubleClick) { return original; }
                     count[0]++;
                     return new MethodVisitor(Opcodes.ASM9, original) {
@@ -87,18 +88,22 @@ final class NativeTransformer implements ClassFileTransformer {
                             super.visitCode();
                             if(scriptDoubleClick){
                                 Label unchanged=new Label();
-                                super.visitLdcInsn(SCRIPT_POPUP);super.visitVarInsn(Opcodes.ALOAD,0);
-                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,"java/lang/Object","getClass","()Ljava/lang/Class;",false);
-                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,"java/lang/Class","getName","()Ljava/lang/String;",false);
-                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,"java/lang/String","equals","(Ljava/lang/Object;)Z",false);
-                                super.visitJumpInsn(Opcodes.IFEQ,unchanged);
+                                // 通用 Explorer 入口先于专用控制器；只接收已完成选择的鼠标双击（4），
+                                // 实际脚本类型/OID/活动面板由处理器核实，不再限定“脚本”栏控制器。
+                                super.visitVarInsn(Opcodes.ALOAD,1);super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_EVENT,"getType","()I",false);
+                                super.visitInsn(Opcodes.ICONST_4);super.visitJumpInsn(Opcodes.IF_ICMPNE,unchanged);
                                 super.visitLdcInsn(ScriptDoubleClick.HANDLER);super.visitMethodInsn(Opcodes.INVOKESTATIC,"javax/swing/UIManager","get","(Ljava/lang/Object;)Ljava/lang/Object;",false);
                                 super.visitTypeInsn(Opcodes.INSTANCEOF,"java/util/function/BiPredicate");super.visitJumpInsn(Opcodes.IFEQ,unchanged);
                                 super.visitLdcInsn(ScriptDoubleClick.HANDLER);super.visitMethodInsn(Opcodes.INVOKESTATIC,"javax/swing/UIManager","get","(Ljava/lang/Object;)Ljava/lang/Object;",false);
                                 super.visitTypeInsn(Opcodes.CHECKCAST,"java/util/function/BiPredicate");
-                                super.visitVarInsn(Opcodes.ALOAD,0);super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_CONTROLLER,"getUIContext","()Lcom/lucanet/lisa/ui/UIContext;",false);
-                                super.visitVarInsn(Opcodes.ALOAD,1);super.visitMethodInsn(Opcodes.INVOKEINTERFACE,"java/util/function/BiPredicate","test","(Ljava/lang/Object;Ljava/lang/Object;)Z",true);
-                                super.visitJumpInsn(Opcodes.IFEQ,unchanged);super.visitInsn(Opcodes.ICONST_1);super.visitInsn(Opcodes.IRETURN);
+                                super.visitVarInsn(Opcodes.ALOAD,1);super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_EVENT,"getTreeTableContext","()L"+TREE_CONTEXT+";",false);
+                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_CONTEXT,"getUIContext","()Lcom/lucanet/lisa/ui/UIContext;",false);
+                                super.visitVarInsn(Opcodes.ALOAD,1);super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_EVENT,"getTreeTableContext","()L"+TREE_CONTEXT+";",false);
+                                super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_CONTEXT,"getInteractedCell","()L"+CELL+";",false);
+                                super.visitMethodInsn(Opcodes.INVOKEINTERFACE,"java/util/function/BiPredicate","test","(Ljava/lang/Object;Ljava/lang/Object;)Z",true);
+                                super.visitJumpInsn(Opcodes.IFEQ,unchanged);
+                                super.visitVarInsn(Opcodes.ALOAD,1);super.visitMethodInsn(Opcodes.INVOKEVIRTUAL,TREE_EVENT,"consume","()V",false);
+                                super.visitInsn(Opcodes.RETURN);
                                 super.visitLabel(unchanged);super.visitFrame(Opcodes.F_SAME,0,null,0,null);
                             }
                             if (link) {
@@ -203,7 +208,7 @@ final class NativeTransformer implements ClassFileTransformer {
             EnhancementLog.info("TRANSFORMED: " + name);
             // 运行时安装观察器，原生字节码只调用 JComponent API，不增加 bootstrap 桥协议依赖。
             if (PANEL.equals(name)) { ScriptControls.ensureInstalled(); }
-            if(SCRIPT_GENERAL.equals(name)||TREE_CONTROLLER.equals(name)){ScriptDoubleClick.ensureInstalled(instrumentation);}
+            if(SCRIPT_GENERAL.equals(name)||EXPLORER_INTERACTION.equals(name)){ScriptDoubleClick.ensureInstalled(instrumentation);}
             return writer.toByteArray();
         } catch (Exception | LinkageError failure) {
             this.failure = "Transformation failed: " + name;

@@ -10,7 +10,7 @@ public final class ScriptPanelContractProbe {
     private static final Map<String,byte[]> transformed=new HashMap<>();
     private static final String PANEL="com/lucanet/lisa/widgets/processlogger/ui/ProcessLoggerExecutionPanel";
     private static final String GENERAL="com/lucanet/summa/client/sections/script/panels/ScriptGeneralPanel";
-    private static final String TREE="com/lucanet/sarah/client/misc/HierarchyElementPopupController";
+    private static final String TREE="com/lucanet/lisa/applicationframe/section/explorer/Explorer$c";
     public static void premain(String args,Instrumentation instrumentation) {
         instrumentation.addTransformer(new ClassFileTransformer(){
             @Override public byte[] transform(Module module,ClassLoader loader,String name,Class<?> type,ProtectionDomain domain,byte[] bytes){
@@ -51,14 +51,30 @@ public final class ScriptPanelContractProbe {
         for(String suffix:new String[]{"button","context","register"})if(!generalKeys.contains("cn.lucanet.enhancement.script.doubleClick."+suffix))throw new AssertionError("Missing double-click panel hook: "+suffix);
         if(!runCalls.contains("com/lucanet/summa/client/sections/script/dialogs/ScriptExecutionDialogCreator.showDialog")
                 || runCalls.stream().anyMatch(call->call.endsWith(".start")||call.endsWith(".startAndShow")))throw new AssertionError("Native run must open dialog without starting: "+runCalls);
-        boolean[] predicate={false},scope={false};
+        boolean[] predicate={false},consume={false},type={false};
         new ClassReader(transformed.get(TREE)).accept(new ClassVisitor(Opcodes.ASM9){
-            public MethodVisitor visitMethod(int a,String n,String d,String s,String[] e){if(!n.equals("handlePostSelectionDoubleClick"))return null;return new MethodVisitor(Opcodes.ASM9){
-                public void visitLdcInsn(Object value){if("com.lucanet.summa.client.sections.script.controllers.ScriptPopupController".equals(value))scope[0]=true;}
-                public void visitMethodInsn(int o,String owner,String method,String desc,boolean itf){if(owner.equals("java/util/function/BiPredicate")&&method.equals("test"))predicate[0]=true;}
+            public MethodVisitor visitMethod(int a,String n,String d,String s,String[] e){if(!n.equals("userInteracted"))return null;return new MethodVisitor(Opcodes.ASM9){
+                public void visitMethodInsn(int o,String owner,String method,String desc,boolean itf){
+                    if(owner.equals("java/util/function/BiPredicate")&&method.equals("test"))predicate[0]=true;
+                    if(method.equals("consume"))consume[0]=true;if(method.equals("getType"))type[0]=true;
+                }
             };}
         },0);
-        if(!predicate[0]||!scope[0])throw new AssertionError("Real script-scoped double-click entry not transformed");
-        System.out.println("PASS: real ScriptGeneralPanel and hierarchy double-click hook verify; original run opens showDialog without start");
+        if(!predicate[0]||!consume[0]||!type[0])throw new AssertionError("Common Explorer double-click entry not transformed");
+        Class<?> multi=Class.forName("com.lucanet.summa.client.sections.position.multidim.MultiDimNode",false,ClassLoader.getSystemClassLoader());
+        String viewType=multi.getMethod("getViewNode").getReturnType().getName();
+        if(!Set.of("com.lucanet.summa.shared.datamodel.DimNode","com.lucanet.fishared.datamodel.DimNode").contains(viewType))throw new AssertionError("Multi-dimensional view contract changed: "+viewType);
+        Class<?> dimension=Class.forName(viewType.substring(0,viewType.lastIndexOf('.')+1)+"IdentifiableViewDimNode",false,ClassLoader.getSystemClassLoader());
+        if(!dimension.getMethod("getIdentifiableView").getReturnType().getName().equals("com.lucanet.identifiable.shared.datamodel.IdentifiableView"))throw new AssertionError("Dimensional identity contract changed");
+        Class<?> program=Class.forName("com.lucanet.summa.client.fi.fi_conso2.dpsections.consolidatedstatement.ScriptProgramElementDPSection",false,ClassLoader.getSystemClassLoader());
+        for(String getter:new String[]{"getExecuteButton","getObjectID","getDetailPanelContext"}) {
+            boolean found=false;
+            for(Class<?> candidate=program;candidate!=null;candidate=candidate.getSuperclass())try{candidate.getDeclaredMethod(getter);found=true;break;}catch(NoSuchMethodException absent){}
+            if(!found)throw new AssertionError("Program script UI contract missing: "+getter);
+        }
+        Class<?> scriptModel=Class.forName("com.lucanet.summa.client.sections.script.dpsections.ScriptDPSectionModel",false,ClassLoader.getSystemClassLoader());
+        Class<?> baseModel=Class.forName("com.lucanet.sarah.client.view.DefaultDPSectionModel",false,ClassLoader.getSystemClassLoader());
+        if(!baseModel.isAssignableFrom(scriptModel) || !baseModel.getDeclaredField("node").getType().getName().equals("com.lucanet.identifiable.shared.datamodel.IdentifiableView"))throw new AssertionError("Captured hierarchy script model contract changed");
+        System.out.println("PASS: common Explorer hook, wrapped-node identity and program-script native run getters verify; standard run remains showDialog without start");
     }
 }

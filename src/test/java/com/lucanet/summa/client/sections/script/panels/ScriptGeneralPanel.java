@@ -7,6 +7,7 @@ import com.lucanet.lisa.applicationframe.section.detailpanel.DPSectionModel;
 public final class ScriptGeneralPanel extends JPanel {
     private final LNButton t=new LNButton("运行");
     private final DetailPanelContext context;
+    private DPSectionModel model;
     public int openedDialogs,startedScripts;
     public boolean showing=true,fail;
     public ScriptGeneralPanel(DetailPanelContext context){this.context=context;add(t);}
@@ -16,6 +17,8 @@ public final class ScriptGeneralPanel extends JPanel {
         openedDialogs++;
     });}
     public DetailPanelContext getDetailPanelContext(){return context;}
+    public DPSectionModel getDPSectionModel(){return model;}
+    public void setDPSectionModel(DPSectionModel value){model=value;}
     public JButton runButton(){return t;}
     @Override public boolean isShowing(){return showing;}
     @Override public boolean isDisplayable(){return true;}

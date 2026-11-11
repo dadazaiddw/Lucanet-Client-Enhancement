@@ -18,6 +18,12 @@ final class ScriptDoubleClick implements BiPredicate<Object,Object>, Consumer<Ob
     private static final String DETAIL="com.lucanet.lisa.applicationframe.context.DetailPanelContext";
     private static final String CELL="com.lucanet.lisa.widgets.treetable.LNTreeTableCell";
     private static final String NODE="com.lucanet.identifiable.shared.datamodel.IdentifiableView";
+    private static final String SCRIPT_MODEL="com.lucanet.summa.client.sections.script.dpsections.ScriptDPSectionModel";
+    private static final String HIERARCHY_ELEMENT="com.lucanet.summa.database.model.script.ScriptHierarchyElement";
+    private static final String MULTI="com.lucanet.summa.client.sections.position.multidim.MultiDimNode";
+    private static final String[] DIM_NODES={"com.lucanet.summa.shared.datamodel.IdentifiableViewDimNode",
+            "com.lucanet.fishared.datamodel.IdentifiableViewDimNode"};
+    private static final String PROGRAM_PANEL="com.lucanet.summa.client.fi.fi_conso2.dpsections.consolidatedstatement.ScriptProgramElementDPSection";
     private static ScriptDoubleClick instance;
     private final Instrumentation instrumentation;
     private final Map<JComponent,Boolean> panels=new WeakHashMap<>();
@@ -36,22 +42,20 @@ final class ScriptDoubleClick implements BiPredicate<Object,Object>, Consumer<Ob
         if(!EventQueue.isDispatchThread()){EventQueue.invokeLater(()->accept(value));return;}
         if(!closed && value instanceof JComponent) {
             JComponent panel=(JComponent)value;
-            if(panel.getClientProperty(BUTTON)==null && panel.getClass().getName().equals("com.lucanet.summa.client.sections.script.panels.ScriptGeneralPanel")) {
+            boolean programPanel=panel.getClass().getName().equals(PROGRAM_PANEL);
+            if(panel.getClientProperty(BUTTON)==null && (programPanel || panel.getClass().getName().equals("com.lucanet.summa.client.sections.script.panels.ScriptGeneralPanel"))) {
                 // 热更新不重新执行已存在面板的 initGeneralPanel；补读已核实的按钮和上下文字段。
                 // 这里只读取 UI 对象，原生“运行”动作仍在反射返回后直接 doClick。
                 try {
-                    Field button=null;
-                    for(Field field:panel.getClass().getDeclaredFields())if(!Modifier.isStatic(field.getModifiers()) && AbstractButton.class.isAssignableFrom(field.getType())) {
-                        if(button!=null)return;button=field;
+                    Object context=uiGetter(panel,"getDetailPanelContext"),run;
+                    if(programPanel)run=uiGetter(panel,"getExecuteButton");
+                    else {
+                        Field button=null;
+                        for(Field field:panel.getClass().getDeclaredFields())if(!Modifier.isStatic(field.getModifiers()) && AbstractButton.class.isAssignableFrom(field.getType())) {
+                            if(button!=null)return;button=field;
+                        }
+                        if(button==null)return;openForUiRead(button.getDeclaringClass());button.setAccessible(true);run=button.get(panel);
                     }
-                    Method getter=null;
-                    for(Class<?> type=panel.getClass();type!=null && getter==null;type=type.getSuperclass()) {
-                        try{getter=type.getDeclaredMethod("getDetailPanelContext");}catch(NoSuchMethodException missing){}
-                    }
-                    if(button==null || getter==null)return;
-                    openForUiRead(button.getDeclaringClass());openForUiRead(getter.getDeclaringClass());
-                    button.setAccessible(true);getter.setAccessible(true);
-                    Object context=getter.invoke(panel),run=button.get(panel);
                     if(context!=null && run instanceof AbstractButton){panel.putClientProperty(CONTEXT,context);panel.putClientProperty(BUTTON,run);}
                 }catch(ReflectiveOperationException|RuntimeException failure){EnhancementLog.error("SCRIPT_DOUBLE_CLICK_PANEL_UNAVAILABLE",failure);return;}
             }
@@ -72,14 +76,21 @@ final class ScriptDoubleClick implements BiPredicate<Object,Object>, Consumer<Ob
         try {
             if(explorerContext==null || cell==null)return false;
             ClassLoader loader=cell.getClass().getClassLoader();
-            Object clicked=read(loader,CELL,cell,"getNode");
-            if(clicked==null || !"com.lucanet.summa.database.model.script.ScriptNode".equals(read(loader,NODE,clicked,"getDelegateClass")))return false;
+            // 数值列仍由原生钻取处理，增强只处理节点名称列。
+            if(((Number)read(loader,CELL,cell,"getColumn")).intValue()>0)return false;
+            Object clicked=identity(loader,read(loader,CELL,cell,"getNode"));
+            if(clicked==null)return false;
+            Object delegate=read(loader,NODE,clicked,"getDelegateClass");
+            boolean scriptNode="com.lucanet.summa.database.model.script.ScriptNode".equals(delegate);
+            boolean hierarchyElement=HIERARCHY_ELEMENT.equals(delegate);
             Object oid=read(loader,NODE,clicked,"getObjectID");
             Object container=read(loader,UI,explorerContext,"getUiContainer");
             // 覆盖首次打开及运行中热更新的面板；注册表是弱引用，不保留已关闭的窗口。
             for(Window window:Window.getWindows())if(window.isDisplayable())scan(window);
             AbstractButton run=null;
             for(JComponent panel:new ArrayList<>(panels.keySet())) {
+                boolean programPanel=panel.getClass().getName().equals(PROGRAM_PANEL);
+                if(!scriptNode && !hierarchyElement && !programPanel)continue;
                 Object context=panel.getClientProperty(CONTEXT);
                 if(!panel.isShowing()) {
                     // 概况页签未选中时仍可运行，但已退出的工作区/已销毁面板不能成为目标。
@@ -88,8 +99,19 @@ final class ScriptDoubleClick implements BiPredicate<Object,Object>, Consumer<Ob
                     if(!(detail instanceof Component) || !((Component)detail).isShowing())continue;
                 }
                 if(read(loader,UI,context,"getUiContainer")!=container)continue;
-                Object current=read(loader,DETAIL,context,"getCurrentExplorerNode");
+                Object current=identity(loader,read(loader,DETAIL,context,"getCurrentExplorerNode"));
                 if(current==null || !oid.equals(read(loader,NODE,current,"getObjectID")))continue;
+                if(!delegate.equals(read(loader,NODE,current,"getDelegateClass")))continue;
+                if(hierarchyElement && !programPanel){
+                    // 自定义栏实际返回 ScriptHierarchyElement。该类型不能单独证明是脚本：
+                    // 必须同时是脚本详情模型，且模型已加载的节点就是本次双击的节点。
+                    Object model=uiGetter(panel,"getDPSectionModel");
+                    if(!instanceOf(loader,SCRIPT_MODEL,model))continue;
+                    Object loaded=identity(loader,loadedModelNode(model));
+                    if(loaded==null || !oid.equals(read(loader,NODE,loaded,"getObjectID")))continue;
+                }
+                // 程序型脚本有独立配置模型，额外核对模型 OID，避免点击仍在切换的旧详情。
+                if(programPanel && !oid.equals(uiGetter(panel,"getObjectID")))continue;
                 AbstractButton candidate=(AbstractButton)panel.getClientProperty(BUTTON);
                 if(!candidate.isVisible() || !candidate.isEnabled())continue;
                 if(run!=null && run!=candidate)return false; // 多个可见目标不猜测。
@@ -106,6 +128,35 @@ final class ScriptDoubleClick implements BiPredicate<Object,Object>, Consumer<Ob
         } catch(ReflectiveOperationException|RuntimeException|LinkageError failure) {
             EnhancementLog.error("SCRIPT_DOUBLE_CLICK_FAILED: original tree behavior retained",failure);return false;
         }
+    }
+    private Object loadedModelNode(Object model)throws ReflectiveOperationException {
+        for(Class<?> type=model.getClass();type!=null;type=type.getSuperclass()){
+            if(!type.getName().equals("com.lucanet.sarah.client.view.DefaultDPSectionModel"))continue;
+            Field node=type.getDeclaredField("node");openForUiRead(type);node.setAccessible(true);return node.get(model);
+        }
+        throw new NoSuchFieldException("DefaultDPSectionModel.node");
+    }
+    private Object uiGetter(Object target,String name)throws ReflectiveOperationException {
+        for(Class<?> type=target.getClass();type!=null;type=type.getSuperclass()) {
+            try {
+                Method getter=type.getDeclaredMethod(name);openForUiRead(type);getter.setAccessible(true);return getter.invoke(target);
+            }catch(NoSuchMethodException missing){}
+        }
+        throw new NoSuchMethodException(name);
+    }
+    private Object identity(ClassLoader loader,Object value)throws ReflectiveOperationException {
+        if(value==null)return null;
+        Class<?> identity=Class.forName(NODE,false,loader);
+        if(identity.isInstance(value))return value;
+        // 自定义报表/财务工作区用多维节点包装脚本。仅解包已核实的只读视图接口，
+        // 不按脚本名称猜测，不把当前 ValueHolder 的其他维度后代当作脚本。
+        if(instanceOf(loader,MULTI,value))value=read(loader,MULTI,value,"getViewNode");
+        for(String type:DIM_NODES)if(instanceOf(loader,type,value)){value=read(loader,type,value,"getIdentifiableView");break;}
+        return identity.isInstance(value)?value:null;
+    }
+    private boolean instanceOf(ClassLoader loader,String type,Object value) {
+        if(value==null)return false;
+        try{return Class.forName(type,false,loader).isInstance(value);}catch(ClassNotFoundException absent){return false;}
     }
     private Object read(ClassLoader loader,String typeName,Object target,String methodName)throws ReflectiveOperationException {
         Class<?> type=Class.forName(typeName,false,loader);
