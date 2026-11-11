@@ -14,6 +14,13 @@ import ln.application.spi.DefaultApplicationComponentBuilder;
 /** 在独立 JVM 使用本机真实的生命周期库；不启动 Lucanet 业务组件，不连接服务器。 */
 public final class RealLifecycleTest {
     public static void main(String[] args) throws Exception {
+        if (Boolean.getBoolean("fixture.administrator")) {
+            ClassLoader loader = RealLifecycleTest.class.getClassLoader();
+            if (loader.getResource("com/lucanet/assembly/summa/client/SummaClientStart.class") != null
+                    || loader.getResource("com/lucanet/assembly/summa/admin/SarahAdminClientStart.class") == null) {
+                throw new AssertionError("Administrator lifecycle requires its own assembly only");
+            }
+        }
         List<String> order = new ArrayList<>();
         File directory = new File(System.getProperty("fixture.tempDir"));
         Files.createDirectories(directory.toPath());

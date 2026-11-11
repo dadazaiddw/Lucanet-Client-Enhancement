@@ -12,11 +12,19 @@ public final class RealNativeConfigTest {
         Object data = directory.getMethod("of", String.class).invoke(null, args[2]);
         Object programPaths = paths.getMethod("of",directory,directory,os).invoke(null,installation,data,Enum.valueOf((Class)os,"WINDOWS"));
         Class<?> configClass = Class.forName("com.lucanet.program.ProgramLaunchConfiguration");
-        Object config = configClass.getMethod("parse",paths,file).invoke(null, programPaths,file.getMethod("of",String.class).invoke(null,args[1]));
-        String generated = (String)configClass.getMethod("toString",boolean.class,boolean.class).invoke(config,false,false);
-        if (generated.lines().filter(s -> s.startsWith("jdkParameter=-javaagent:")).count()!=1) { throw new AssertionError(generated); }
-        if (!generated.contains("mainClass=com/lucanet/lnswmgr_ui/Main")) { throw new AssertionError(generated); }
-        Files.writeString(Path.of(args[2],"generated-manager.ln10"),generated);
-        System.out.println("PASS: real ProgramLaunchConfiguration parser/serializer propagates native Agent parameter");
+        String input = Files.readString(Path.of(args[1]));
+        String[] mains = {"com/lucanet/lnswmgr_ui/Main", "com/lucanet/assembly/summa/client/SummaClientStart",
+                "com/lucanet/assembly/summa/admin/SarahAdminClientStart", "com/lucanet/assembly/summa/server/SummaServerStart"};
+        for (int i = 0; i < mains.length; i++) {
+            String main = mains[i];
+            Path parsedFile = Path.of(args[2], "input-" + i + ".ln10");
+            Files.writeString(parsedFile, input.replaceAll("(?m)^mainClass=[^\\r\\n]+", "mainClass=" + main));
+            Object config = configClass.getMethod("parse",paths,file).invoke(null, programPaths,file.getMethod("of",String.class).invoke(null,parsedFile.toString()));
+            String generated = (String)configClass.getMethod("toString",boolean.class,boolean.class).invoke(config,false,false);
+            long agents = generated.lines().filter(s -> s.startsWith("jdkParameter=-javaagent:")).count();
+            if (agents != (i == 3 ? 0 : 1) || !generated.contains("mainClass=" + main)) { throw new AssertionError(generated); }
+            Files.writeString(Path.of(args[2],"generated-" + i + ".ln10"),generated);
+        }
+        System.out.println("PASS: real native configuration propagates to Manager/Financial/Administrator, server unchanged");
     }
 }

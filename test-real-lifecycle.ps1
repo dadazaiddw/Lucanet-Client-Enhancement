@@ -45,4 +45,19 @@ $sources = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src\integratio
 if ($LASTEXITCODE -ne 0) { throw 'Real-library test compilation failed.' }
 & $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.exit.logDir=$work\logs" "-Dlucanet.exit.archiveDir=$work\archive" "-Dfixture.tempDir=$work\temp" -cp $classpath cn.lucanet.enhancement.exit.RealLifecycleTest
 if ($LASTEXITCODE -ne 0) { throw 'Real-library lifecycle test failed.' }
+# 管理员使用真实 assembly_summa_admin 标记；此运行目录不带 Financial 入口替身。
+$adminClasses = Join-Path $work 'administrator-probe'
+$adminPackage = Join-Path $adminClasses 'cn\lucanet\enhancement\exit'
+New-Item -ItemType Directory -Path $adminPackage -Force | Out-Null
+Get-ChildItem -LiteralPath (Join-Path $work 'cn\lucanet\enhancement\exit') -Filter 'RealLifecycleTest*.class' | ForEach-Object {
+    Copy-Item -LiteralPath $_.FullName -Destination $adminPackage
+}
+$adminAssemblies = @(Get-ChildItem -LiteralPath $ResourceDirectory -Filter 'assembly_summa_admin-*.jar' -File)
+if($adminAssemblies.Count -eq 0){throw 'Administrator assembly missing for isolated lifecycle test.'}
+foreach($assembly in $adminAssemblies){
+    $adminClasspath = (@($jars) + @($agent, $adminClasses, $assembly.FullName)) -join ';'
+    $scenario = Join-Path $work $assembly.BaseName
+    & $java '-Djava.awt.headless=true' '-Dfixture.administrator=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.exit.logDir=$work\logs" "-Dlucanet.exit.archiveDir=$scenario\archive" "-Dfixture.tempDir=$scenario\temp" -cp $adminClasspath cn.lucanet.enhancement.exit.RealLifecycleTest
+    if($LASTEXITCODE -ne 0){throw 'Administrator real-library lifecycle test failed.'}
+}
 Write-Host "Real-library test passed. Evidence: $work"
