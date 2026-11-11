@@ -42,5 +42,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Session-state independence / non-client isolat
 Write-Host "All tests passed. Evidence: $testRoot"
 & $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\features.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.NavigationTest
 if ($LASTEXITCODE -ne 0) { throw 'Live navigation feature tests failed.' }
+& $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\script-features.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.ScriptControlsTest
+if ($LASTEXITCODE -ne 0) { throw 'Live script controls tests failed.' }
 & $java -cp "$classes;$agent" cn.lucanet.enhancement.exit.HotUpdateTest (Join-Path $testRoot 'hot update 中文') $agent
 if ($LASTEXITCODE -ne 0) { throw 'Hot update transaction tests failed.' }

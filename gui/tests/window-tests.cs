@@ -120,6 +120,7 @@ internal static class WindowTests {
         await VerifyRefreshLayout(work);
         await UpdateTests.Verify(work);
         await VerifyUpdatePage(work);
+        ScriptSettingsTests.Verify(Path.Combine(work,"script-settings"),new StubService());
         await ServiceTests.Verify(work);
         ToggleTests.Verify(Path.Combine(work,"toggles"));
     }
@@ -174,6 +175,8 @@ internal static class WindowTests {
 
     private static void CheckRefreshBounds(Form form, float scale, string scenario) {
         var toolbar = (RefreshIntervalControl)All(form).Single(c => c.Name == "refreshInterval");
+        // 功能卡片可继续扩展；检查滚动到控件后的可达性，而非要求整页始终塞进视口。
+        ((Panel)All(form).Single(c=>c.Name=="featureSettings")).ScrollControlIntoView(toolbar);Application.DoEvents();
         var seconds = (NumericUpDown)All(toolbar).Single(c => c.Name == "refreshSeconds");
         var unit = All(toolbar).Single(c => c.Name == "refreshUnit");
         var content = Rectangle.FromLTRB(toolbar.Padding.Left, toolbar.Padding.Top,

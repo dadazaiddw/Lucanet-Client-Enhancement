@@ -83,7 +83,7 @@ public final class NativeBridge {
         return value instanceof Enum<?> ? ((Enum<?>) value).name() : String.valueOf(value);
     }
 
-    private static boolean isDesktopClient(ClassLoader loader) {
+    static boolean isDesktopClient(ClassLoader loader) {
         if (loader == null) { return false; }
         // 按客户端入口确认，不依赖登录用户名或会话状态。Administrator 是独立程序，
         // 不能要求其还可见 Financial Client；Manager、服务端等进程不扩大处理范围。

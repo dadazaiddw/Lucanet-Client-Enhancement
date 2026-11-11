@@ -15,6 +15,10 @@ internal sealed partial class EnhancementForm {
     private CheckBox autoCheckUpdates;
     private CheckBox linksInNewWindow;
     private bool restoringLinkSetting;
+    private CheckBox hideScriptStart;
+    private ShortcutBox scriptShortcut;
+    private ScriptFeatureSettings scriptPreferences;
+    private bool restoringScriptSettings;
     private IUpdateService updateService;
     private ReleaseUpdate release;
     private bool updateChecking, updateDownloading, updateInstalling;
@@ -231,6 +235,23 @@ internal sealed partial class EnhancementForm {
         };
         AddAutoRow(navigationCard, SettingRow("链接在新窗口中打开", "ln:goto/LNFC 的 OID 链接先新建窗口再跳转。切换后下一次链接立即生效。", linksInNewWindow));
         AddAutoRow(stack, navigationCard);
+        var scriptCard = SettingsCard("featureScriptCard");
+        AddSectionHeading(scriptCard, "脚本运行", "控制脚本运行弹窗中的开始按钮和快捷键，已打开的弹窗也会实时更新。");
+        try { scriptPreferences = settingsStore.Features.LoadScript(); }
+        catch (IOException) { scriptPreferences = new ScriptFeatureSettings(false,"ALT+R"); }
+        catch (UnauthorizedAccessException) { scriptPreferences = new ScriptFeatureSettings(false,"ALT+R"); }
+        hideScriptStart = new SettingToggle { Name="hideScriptStart", Checked=scriptPreferences.HideStart,
+            AccessibleName="隐藏开始按钮", Anchor=AnchorStyles.Right };
+        hideScriptStart.CheckedChanged += delegate { SaveScriptSettings(); };
+        AddAutoRow(scriptCard,SettingRow("隐藏“开始”按钮", "仅改变按钮显示，不自动运行；关闭后恢复原按钮。",hideScriptStart));
+        AddAutoRow(scriptCard,SettingsDivider());
+        scriptShortcut = new ShortcutBox { Shortcut=scriptPreferences.Shortcut, Anchor=AnchorStyles.Right };
+        var shortcutHint = SettingsLabel("点击输入框后按组合键。默认 Alt + R，仅对当前脚本弹窗生效。",9,false,Muted,"scriptShortcutHint");
+        scriptShortcut.ShortcutRejected += message => { shortcutHint.Text=message; shortcutHint.ForeColor=Amber; };
+        scriptShortcut.ShortcutChanged += delegate { if(SaveScriptSettings()) { shortcutHint.Text="快捷键已保存，打开的脚本弹窗立即使用新设置。";shortcutHint.ForeColor=Muted; } };
+        AddAutoRow(scriptCard,SettingRow("开始快捷键", "支持 Ctrl / Alt + 字母、数字或 F1–F12，也可组合 Shift。",scriptShortcut));
+        shortcutHint.Margin=new Padding(0,8,0,0);AddAutoRow(scriptCard,shortcutHint);
+        AddAutoRow(stack,scriptCard);
         var card = SettingsCard("featureRefreshCard");
         AddSectionHeading(card, "状态刷新", "配置工作区的状态检查频率，设置立即生效。" );
         autoRefresh = new SettingToggle { Name = "autoRefresh", Checked = preferences.AutoRefresh,
@@ -244,8 +265,20 @@ internal sealed partial class EnhancementForm {
         AddAutoRow(card, SettingRow("刷新间隔", "2–300 秒，默认 8 秒；关闭自动刷新后仍可手动检查。", interval));
         AddAutoRow(stack, card);
         var reset = MakeButton("恢复功能默认设置", false, 170); reset.Name = "resetFeatureSettings";
-        reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true; SaveRefreshPreferences(); };
+        reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
+            hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
         AddAutoRow(stack, ButtonRow(reset));
+    }
+
+    private bool SaveScriptSettings() {
+        if (restoringScriptSettings || scriptShortcut == null) return false;
+        var next = new ScriptFeatureSettings(hideScriptStart.Checked,scriptShortcut.Shortcut);
+        try { settingsStore.Features.SaveScript(next); scriptPreferences=next; return true; }
+        catch (Exception e) {
+            restoringScriptSettings=true;hideScriptStart.Checked=scriptPreferences.HideStart;scriptShortcut.Shortcut=scriptPreferences.Shortcut;restoringScriptSettings=false;
+            ShowMessage("脚本设置未保存，已恢复原设置："+e.Message,MessageBoxIcon.Warning);
+            return false;
+        }
     }
 
     private Control SettingRow(string title, string description, Control value) {

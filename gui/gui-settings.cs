@@ -58,11 +58,33 @@ internal sealed class FeatureSettingsStore {
         return true;
     }
     internal void SaveLinksInNewWindow(bool enabled) {
+        SaveValues(new System.Collections.Generic.Dictionary<string,string> {{"linksInNewWindow", enabled ? "true" : "false"}});
+    }
+    internal ScriptFeatureSettings LoadScript() {
+        bool hidden = true; string shortcut = "ALT+R";
+        if (File.Exists(path)) foreach (string source in File.ReadAllLines(path, Encoding.UTF8)) {
+            string line = source.Trim();
+            if (line.StartsWith("hideScriptStart=", StringComparison.Ordinal)) hidden = line.Substring("hideScriptStart=".Length).Equals("true", StringComparison.OrdinalIgnoreCase);
+            if (line.StartsWith("scriptRunShortcut=", StringComparison.Ordinal)) shortcut = line.Substring("scriptRunShortcut=".Length);
+        }
+        try { return new ScriptFeatureSettings(hidden, ScriptShortcutSetting.Normalize(shortcut)); }
+        catch (ArgumentException) { return new ScriptFeatureSettings(false, "ALT+R"); }
+    }
+    internal void SaveScript(ScriptFeatureSettings settings) {
+        string shortcut = ScriptShortcutSetting.Normalize(settings.Shortcut);
+        SaveValues(new System.Collections.Generic.Dictionary<string,string> {
+            {"hideScriptStart",settings.HideStart ? "true" : "false"}, {"scriptRunShortcut",shortcut}
+        });
+    }
+    private void SaveValues(System.Collections.Generic.Dictionary<string,string> values) {
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         var lines = new System.Collections.Generic.List<string>();
-        if (File.Exists(path)) foreach (string line in File.ReadAllLines(path, Encoding.UTF8))
-            if (!line.Trim().StartsWith("linksInNewWindow=", StringComparison.Ordinal)) lines.Add(line);
-        lines.Add("linksInNewWindow=" + (enabled ? "true" : "false"));
+        if (File.Exists(path)) foreach (string line in File.ReadAllLines(path, Encoding.UTF8)) {
+            bool replaced = false;
+            foreach (string key in values.Keys) if (line.Trim().StartsWith(key+"=", StringComparison.Ordinal)) { replaced = true; break; }
+            if (!replaced) lines.Add(line);
+        }
+        foreach (var value in values) lines.Add(value.Key + "=" + value.Value);
         string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try {
             File.WriteAllLines(temporary, lines, new UTF8Encoding(false));
