@@ -22,7 +22,7 @@ try{
             $runtime=Join-Path $env:LOCALAPPDATA 'Lucanet\ClientEnhancement\runtime\processes'
             foreach($process in $status.Processes){
                 if(-not(Test-Path -LiteralPath (Join-Path $runtime ($process.Id.ToString()+'\state.properties')))){
-                    throw '当前运行的版本尚不支持热更新。首次升级到 v1.0.1 请正常关闭客户端和 Manager 后安装；后续兼容版本无需重新登录。'
+                    throw '当前运行的版本尚不支持热更新。请先正常关闭客户端和 Manager 后安装当前包；后续兼容版本无需重新登录。'
                 }
             }
             $jdk=& (Join-Path $script:GuiPackageRoot 'resolve-lucanet-jdk.ps1') -LucanetHome $status.Root

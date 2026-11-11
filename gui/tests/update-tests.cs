@@ -13,8 +13,8 @@ using System.Web.Script.Serialization;
 internal static class UpdateTests {
     internal static async Task Verify(string work) {
         byte[] bytes=Package(null);string hash=Hash(bytes);
-        Assert(AppInfo.Version == "1.0.1", "user-specified application version");
-        Assert(GitHubUpdateService.ParseRelease(Release("v1.0.1",bytes.Length,hash),AppInfo.Version).State==UpdateState.Current,"v1.0.1 release matches application version");
+        Assert(AppInfo.Version == "1.0.2", "user-specified application version");
+        Assert(GitHubUpdateService.ParseRelease(Release("v1.0.2",bytes.Length,hash),AppInfo.Version).State==UpdateState.Current,"v1.0.2 release matches application version");
         var info=GitHubUpdateService.ParseRelease(Release("v2.1.0",bytes.Length,hash),"2.0.0");
         Assert(info.CanDownload&&info.State==UpdateState.Available,"new stable release");
         Assert(GitHubUpdateService.ParseRelease(Release("v2.0.0",bytes.Length,hash),"2.0.0").State==UpdateState.Current,"same version");

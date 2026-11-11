@@ -268,7 +268,7 @@ internal static class WindowTests {
         var blocks=content.Controls.Cast<Control>().Where(c=>c.Visible).OrderBy(c=>c.Top).ToArray();
         for(int i=1;i<blocks.Length;i++)Check(blocks[i].Top>=blocks[i-1].Bottom,scenario+": overlapping settings cards");
         if(page=="application") {
-            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.1",scenario+": application version fixed at 1.0.1");
+            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.2",scenario+": application version fixed at 1.0.2");
             var icon=All(panel).Single(c=>c.Name=="applicationIcon");
             var identity=All(panel).Single(c=>c.Name=="applicationIdentity");
             Check(icon.Bottom<=identity.Height,scenario+": icon fully contained in identity card");

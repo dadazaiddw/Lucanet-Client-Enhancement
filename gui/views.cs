@@ -16,6 +16,8 @@ internal sealed partial class EnhancementForm {
     private CheckBox linksInNewWindow;
     private bool restoringLinkSetting;
     private CheckBox hideScriptStart;
+    private CheckBox scriptDoubleClick;
+    private bool restoringDoubleClick;
     private ShortcutBox scriptShortcut;
     private ScriptFeatureSettings scriptPreferences;
     private bool restoringScriptSettings;
@@ -237,6 +239,16 @@ internal sealed partial class EnhancementForm {
         AddAutoRow(stack, navigationCard);
         var scriptCard = SettingsCard("featureScriptCard");
         AddSectionHeading(scriptCard, "脚本运行", "控制脚本运行弹窗中的开始按钮和快捷键，已打开的弹窗也会实时更新。");
+        bool doubleClick=true;
+        try{doubleClick=settingsStore.Features.LoadScriptDoubleClick();}catch(IOException){doubleClick=false;}catch(UnauthorizedAccessException){doubleClick=false;}
+        scriptDoubleClick=new SettingToggle {Name="scriptDoubleClick",Checked=doubleClick,AccessibleName="双击脚本打开运行弹窗",Anchor=AnchorStyles.Right};
+        scriptDoubleClick.CheckedChanged+=delegate {
+            if(restoringDoubleClick)return;
+            try{settingsStore.Features.SaveScriptDoubleClick(scriptDoubleClick.Checked);}
+            catch(Exception error){restoringDoubleClick=true;scriptDoubleClick.Checked=!scriptDoubleClick.Checked;restoringDoubleClick=false;ShowMessage("双击设置未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(scriptCard,SettingRow("双击脚本打开运行弹窗", "默认开启，等同点击所选脚本的“运行”；切换后下一次双击立即生效。",scriptDoubleClick));
+        AddAutoRow(scriptCard,SettingsDivider());
         try { scriptPreferences = settingsStore.Features.LoadScript(); }
         catch (IOException) { scriptPreferences = new ScriptFeatureSettings(false,"ALT+R"); }
         catch (UnauthorizedAccessException) { scriptPreferences = new ScriptFeatureSettings(false,"ALT+R"); }
@@ -266,7 +278,7 @@ internal sealed partial class EnhancementForm {
         AddAutoRow(stack, card);
         var reset = MakeButton("恢复功能默认设置", false, 170); reset.Name = "resetFeatureSettings";
         reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
-            hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
+            scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
         AddAutoRow(stack, ButtonRow(reset));
     }
 
@@ -336,7 +348,7 @@ internal sealed partial class EnhancementForm {
     }
     private async Task OpenDownloadedVersionAsync() {
         if(String.IsNullOrEmpty(downloadedDirectory)||closing||foregroundBusy)return;
-        if(MessageBox.Show(this,"将应用已校验的新版本，并切换到新版管理界面。已安装 v1.0.1 及以上兼容版本的客户端可保持登录；旧版本会提示正常关闭后安装。", "应用热更新",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
+        if(MessageBox.Show(this,"将应用已校验的新版本，并切换到新版管理界面。已安装支持热更新的兼容客户端可保持登录；不兼容时会提示正常关闭后安装。", "应用热更新",MessageBoxButtons.OKCancel,MessageBoxIcon.Information)!=DialogResult.OK)return;
         updateInstalling=true;requestGeneration++;poll.Stop();UpdateButtons();
         try{
             string candidateVersion = FileVersionInfo.GetVersionInfo(Path.Combine(downloadedDirectory,"enhancement.exe")).ProductVersion;

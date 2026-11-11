@@ -42,4 +42,8 @@ final class FeatureSettings {
             return new ScriptPreferences(false, ScriptShortcut.parse("ALT+R"));
         }
     }
+    static boolean openScriptOnDoubleClick() {
+        try { return Boolean.parseBoolean(load().getProperty("scriptDoubleClick", "true")); }
+        catch (Exception failure) { return false; }
+    }
 }

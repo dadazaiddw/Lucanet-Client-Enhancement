@@ -17,7 +17,10 @@ internal static class ScriptSettingsTests {
         using(var form=new EnhancementForm(new string[0],service,store,d=>Task.FromResult(false),(m,i)=>messages++,false)) {
             var handle=form.Handle;form.Navigate("features");
             var hidden=(CheckBox)form.Controls.Find("hideScriptStart",true).Single();
+            var doubleClick=(CheckBox)form.Controls.Find("scriptDoubleClick",true).Single();
             var shortcut=(ShortcutBox)form.Controls.Find("scriptRunShortcut",true).Single();
+            Check(doubleClick.Checked && store.Features.LoadScriptDoubleClick(),"double-click default enabled");
+            doubleClick.Checked=false;Check(!store.Features.LoadScriptDoubleClick(),"double-click disabled immediately");
             Check(hidden.Checked && shortcut.Shortcut=="ALT+R","GUI defaults hide start");
             hidden.Checked=false;Check(!store.Features.LoadScript().HideStart,"explicit display preference preserved");
             hidden.Checked=true;Check(store.Features.LoadScript().HideStart,"hide saved immediately");
@@ -32,9 +35,11 @@ internal static class ScriptSettingsTests {
             Check(store.Features.LoadScript().HideStart && store.Features.LoadScript().Shortcut=="ALT+R","navigation save preserves script settings");
             hidden.Checked=false;
             Check(store.Features.LoadLinksInNewWindow() && File.ReadAllText(features).Contains("futureFeature=keep"),"script save preserves navigation and future settings");
+            Check(!store.Features.LoadScriptDoubleClick(),"other settings preserve disabled double-click");
             var reset=(Button)form.Controls.Find("resetFeatureSettings",true).Single();
             typeof(Button).GetMethod("OnClick",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(reset,new object[]{EventArgs.Empty});
             Check(hidden.Checked && store.Features.LoadScript().HideStart && store.Features.LoadScript().Shortcut=="ALT+R","restore defaults enables hiding");
+            Check(doubleClick.Checked && store.Features.LoadScriptDoubleClick(),"restore defaults enables double-click");
             Check(messages==0,"normal edits do not show dialogs");form.Close();
         }
         foreach(string invalid in new[]{"R","SHIFT+R","CTRL+CTRL+R","ALT+F4","CTRL+ENTER","WIN+R"}) {

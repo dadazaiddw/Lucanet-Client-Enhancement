@@ -60,6 +60,16 @@ internal sealed class FeatureSettingsStore {
     internal void SaveLinksInNewWindow(bool enabled) {
         SaveValues(new System.Collections.Generic.Dictionary<string,string> {{"linksInNewWindow", enabled ? "true" : "false"}});
     }
+    internal bool LoadScriptDoubleClick() {
+        if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
+            string line=source.Trim();
+            if(line.StartsWith("scriptDoubleClick=",StringComparison.Ordinal))return line.Substring("scriptDoubleClick=".Length).Equals("true",StringComparison.OrdinalIgnoreCase);
+        }
+        return true;
+    }
+    internal void SaveScriptDoubleClick(bool enabled) {
+        SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"scriptDoubleClick",enabled ? "true" : "false"}});
+    }
     internal ScriptFeatureSettings LoadScript() {
         bool hidden = true; string shortcut = "ALT+R";
         if (File.Exists(path)) foreach (string source in File.ReadAllLines(path, Encoding.UTF8)) {
