@@ -8,6 +8,8 @@ using System.Windows.Forms;
 
 internal sealed partial class EnhancementForm {
     private Panel pageHost, workspacePage, settingsPage, applicationPage, featurePage;
+    private Panel navigationShell;
+    private TableLayoutPanel sidebar;
     private Button workspaceNav, settingsNav, applicationNav, featureNav;
     private Label pageTitle, updateStatus, lastUpdateLabel;
     private Button checkUpdatesButton, downloadUpdateButton, openUpdateButton;
@@ -17,6 +19,8 @@ internal sealed partial class EnhancementForm {
     private bool restoringLinkSetting;
     private CheckBox hideScriptStart;
     private CheckBox scriptDoubleClick;
+    private CheckBox nativeSceneDialogFrame;
+    private bool restoringSceneDialogFrame;
     private bool restoringDoubleClick;
     private ShortcutBox scriptShortcut;
     private ScriptFeatureSettings scriptPreferences;
@@ -27,45 +31,78 @@ internal sealed partial class EnhancementForm {
     private string downloadedDirectory;
 
     private void BuildView() {
-        var shell = new TableLayoutPanel { Dock=DockStyle.Fill, ColumnCount=2, RowCount=1, Margin=new Padding(0) };
-        shell.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,176)); shell.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-        shell.RowStyles.Add(new RowStyle(SizeType.Percent,100)); Controls.Add(shell);
-        var sidebar = new TableLayoutPanel { Dock=DockStyle.Fill, BackColor=Navy, ColumnCount=1, RowCount=7, Padding=new Padding(14,22,14,14), Margin=new Padding(0) };
+        // Dock 自动回收隐藏侧栏的宽度，切换页面时沿用当前 DPI 下的尺寸。
+        var shell = navigationShell = new NavigationSurface { Name="navigationShell", Dock=DockStyle.Fill, Margin=new Padding(0) };
+        Controls.Add(shell);
+        sidebar = new TableLayoutPanel { Name="settingsSidebar", Dock=DockStyle.Left, Width=176, BackColor=Navy, ColumnCount=1, RowCount=8, Padding=new Padding(14,22,14,14), Margin=new Padding(0) };
         sidebar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-        foreach(int height in new[]{68,44,8,44,44}) sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,height));
-        sidebar.RowStyles.Add(new RowStyle(SizeType.Percent,100)); sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
-        sidebar.Controls.Add(new Label { Text="Lucanet\nClient Enhancement", Dock=DockStyle.Fill, ForeColor=Color.White, Font=new Font(Font.FontFamily,11,FontStyle.Bold) },0,0);
-        workspaceNav=NavigationButton("工作区","workspaceNavigation");workspaceNav.Click+=delegate{Navigate("workspace");};
-        settingsNav=NavigationButton("设置","settingsNavigation");settingsNav.Click+=delegate{Navigate("application");};
-        sidebar.Controls.Add(workspaceNav,0,1);sidebar.Controls.Add(settingsNav,0,3);
-        sidebar.Controls.Add(new Label { Text="v"+AppInfo.Version,ForeColor=Color.FromArgb(172,194,207),Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft },0,6);
-        shell.Controls.Add(sidebar,0,0);
+        foreach(int height in new[]{44,22,44,8,44}) sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,height));
+        sidebar.RowStyles.Add(new RowStyle(SizeType.Percent,100)); sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,44)); sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
+        workspaceNav=NavigationButton("返回工作区","workspaceNavigation",true);workspaceNav.Click+=delegate{Navigate("workspace");};
+        applicationNav=NavigationButton("应用","applicationNavigation");applicationNav.Click+=delegate{Navigate("application");};
+        featureNav=NavigationButton("功能","featureNavigation");featureNav.Click+=delegate{Navigate("features");};
+        sidebar.Controls.Add(workspaceNav,0,0);sidebar.Controls.Add(applicationNav,0,2);sidebar.Controls.Add(featureNav,0,4);
+        sidebar.Controls.Add(new Label { Name="sidebarVersion", Text="v"+AppInfo.Version,ForeColor=Color.FromArgb(172,194,207),Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft },0,7);
 
-        var main=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=new Padding(0) };
-        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));main.RowStyles.Add(new RowStyle(SizeType.Absolute,62));main.RowStyles.Add(new RowStyle(SizeType.Percent,100));shell.Controls.Add(main,1,0);
-        pageTitle=new Label { Text="工作区",Dock=DockStyle.Fill,Padding=new Padding(24,18,0,0),Font=new Font(Font.FontFamily,16,FontStyle.Bold),BackColor=Color.White,ForeColor=Navy,Margin=new Padding(0) };
-        main.Controls.Add(pageTitle,0,0);
+        var main=new TableLayoutPanel { Name="mainContent",Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=new Padding(0) };
+        main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));main.RowStyles.Add(new RowStyle(SizeType.Absolute,62));main.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        shell.Controls.Add(main);shell.Controls.Add(sidebar);
+        var header=new TableLayoutPanel { Name="pageHeader",Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,BackColor=Color.White,Margin=new Padding(0) };
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));header.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));header.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        pageTitle=new Label { Name="pageTitle",Text="工作区",Dock=DockStyle.Fill,Padding=new Padding(24,18,0,0),Font=new Font(Font.FontFamily,16,FontStyle.Bold),BackColor=Color.White,ForeColor=Navy,Margin=new Padding(0) };
+        settingsNav=new NavigationIconButton(NavigationGlyph.Settings) { Name="settingsNavigation",AccessibleName="设置",Size=new Size(44,44),Anchor=AnchorStyles.Right,
+            Margin=new Padding(0,9,24,9),FlatStyle=FlatStyle.Flat,BackColor=Color.White,ForeColor=Navy,Cursor=Cursors.Hand };
+        settingsNav.FlatAppearance.BorderSize=0;settingsNav.FlatAppearance.MouseOverBackColor=Color.FromArgb(245,238,252);
+        settingsNav.Click+=delegate{Navigate("application");};tips.SetToolTip(settingsNav,"设置");
+        header.Controls.Add(pageTitle,0,0);header.Controls.Add(settingsNav,1,0);main.Controls.Add(header,0,0);
         pageHost=new Panel { Dock=DockStyle.Fill,Margin=new Padding(0) };main.Controls.Add(pageHost,0,1);
         workspacePage=new Panel { Name="workspacePage",Dock=DockStyle.Fill,Padding=new Padding(24,24,24,20),AutoScroll=true };
-        settingsPage=new Panel { Name="settingsPage",Dock=DockStyle.Fill,Padding=new Padding(24,18,24,20),Visible=false };
+        settingsPage=new Panel { Name="settingsPage",Dock=DockStyle.Fill,Padding=new Padding(24,24,24,20),Visible=false };
         pageHost.Controls.Add(settingsPage);pageHost.Controls.Add(workspacePage);
         BuildWorkspace();BuildSettings();Navigate("workspace");UpdateButtons();
+        // Load 在窗口首次呈现前执行；预备隐藏页的原生控件，避免首次点击时集中创建。
+        Load+=delegate {
+            Navigate("application");CreatePageHandles(settingsPage);CreatePageHandles(sidebar);
+            Navigate("features");Navigate("workspace");
+        };
     }
 
-    private Button NavigationButton(string text,string name) {
-        var b=new Button { Name=name,Text=text,TextAlign=ContentAlignment.MiddleLeft,Dock=DockStyle.Fill,FlatStyle=FlatStyle.Flat,ForeColor=Color.FromArgb(215,227,234),BackColor=Navy,Cursor=Cursors.Hand,Padding=new Padding(13,0,0,0),Margin=new Padding(0),Font=new Font(Font.FontFamily,10) };
+    private Button NavigationButton(string text,string name,bool back=false) {
+        Button b=back?(Button)new NavigationIconButton(NavigationGlyph.Back):new Button();
+        b.Name=name;b.Text=text;b.AccessibleName=text;b.TextAlign=ContentAlignment.MiddleLeft;b.Dock=DockStyle.Fill;b.FlatStyle=FlatStyle.Flat;
+        b.ForeColor=Color.FromArgb(215,227,234);b.BackColor=Navy;b.Cursor=Cursors.Hand;b.Padding=new Padding(back?38:13,0,0,0);b.Margin=new Padding(0);b.Font=new Font(Font.FontFamily,10);
         b.FlatAppearance.BorderSize=0;b.FlatAppearance.MouseOverBackColor=Color.FromArgb(22,65,82);return b;
     }
 
     internal void Navigate(string page) {
         bool workspace=page=="workspace";
-        workspacePage.Visible=workspace;settingsPage.Visible=!workspace;
-        workspaceNav.BackColor=workspace?Purple:Navy;workspaceNav.ForeColor=Color.White;
-        settingsNav.BackColor=workspace?Navy:Purple;settingsNav.ForeColor=Color.White;
-        pageTitle.Text=workspace?"工作区":"设置";
-        if(!workspace){applicationPage.Visible=page=="application";featurePage.Visible=page=="features";}
-        StyleTab(applicationNav,page=="application");StyleTab(featureNav,page=="features");
-        if(workspace)workspacePage.BringToFront();else settingsPage.BringToFront();
+        var containers=new List<Control>();CollectLayoutContainers(navigationShell,containers);
+        foreach(var container in containers)container.SuspendLayout();
+        try {
+            // 先隐藏离开的页面，再调整侧栏和目标内容，避免旧页面按临时宽度重排。
+            if(workspace)settingsPage.Visible=false;else workspacePage.Visible=false;
+            if(!workspace){applicationPage.Visible=page=="application";featurePage.Visible=page=="features";}
+            sidebar.Visible=!workspace;settingsNav.Visible=workspace;
+            pageTitle.Text=workspace?"工作区":page=="application"?applicationNav.Text:featureNav.Text;
+            StyleNavigation(applicationNav,page=="application");StyleNavigation(featureNav,page=="features");
+            if(workspace){workspacePage.BringToFront();workspacePage.Visible=true;}
+            else{settingsPage.BringToFront();settingsPage.Visible=true;}
+        } finally {
+            // 固定容器先分配最终宽度；自适应内容从内向外恢复，避免反复测量整页。
+            foreach(var container in containers)if(!container.AutoSize)container.ResumeLayout(true);
+            for(int i=containers.Count-1;i>=0;i--)if(containers[i].AutoSize)containers[i].ResumeLayout(true);
+        }
+    }
+
+    private static void CollectLayoutContainers(Control parent,List<Control> containers) {
+        if(!parent.HasChildren)return;
+        containers.Add(parent);
+        foreach(Control child in parent.Controls)CollectLayoutContainers(child,containers);
+    }
+
+    private static void CreatePageHandles(Control control) {
+        var handle=control.Handle;
+        foreach(Control child in control.Controls)CreatePageHandles(child);
     }
 
     private void BuildWorkspace() {
@@ -106,16 +143,15 @@ internal sealed partial class EnhancementForm {
     }
 
     private void BuildSettings() {
-        var layout=new TableLayoutPanel { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=new Padding(0) };
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));layout.RowStyles.Add(new RowStyle(SizeType.Absolute,50));layout.RowStyles.Add(new RowStyle(SizeType.Percent,100));settingsPage.Controls.Add(layout);
-        var tabs=new FlowLayoutPanel { Dock=DockStyle.Fill,WrapContents=false,Margin=new Padding(0) };
-        applicationNav=MakeButton("应用",false,100);applicationNav.Name="applicationNavigation";applicationNav.Click+=delegate{Navigate("application");};
-        featureNav=MakeButton("功能",false,100);featureNav.Name="featureNavigation";featureNav.Click+=delegate{Navigate("features");};tabs.Controls.AddRange(new Control[]{applicationNav,featureNav});layout.Controls.Add(tabs,0,0);
-        var host=new Panel { Dock=DockStyle.Fill,Margin=new Padding(0) };layout.Controls.Add(host,0,1);
         applicationPage=new Panel { Name="applicationSettings",Dock=DockStyle.Fill,AutoScroll=true,BackColor=BackColor,Padding=new Padding(0,0,0,4) };
         featurePage=new Panel { Name="featureSettings",Dock=DockStyle.Fill,AutoScroll=true,BackColor=BackColor,Padding=new Padding(0,0,0,4),Visible=false };
-        host.Controls.Add(featurePage);host.Controls.Add(applicationPage);
+        settingsPage.Controls.Add(featurePage);settingsPage.Controls.Add(applicationPage);
         BuildApplicationSettings();BuildFeatureSettings();
+        var reset=NavigationButton("恢复默认设置","resetFeatureSettings");
+        tips.SetToolTip(reset,"恢复功能及状态刷新默认值，保留更新设置。");
+        reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
+            nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
+        sidebar.Controls.Add(reset,0,6);
     }
 
     // 设置页使用 AutoSize 行，不把像素行高与字体 DPI 缩放混在一起。
@@ -210,6 +246,8 @@ internal sealed partial class EnhancementForm {
         lastUpdateLabel = SettingsLabel(FormatLastCheck(), 9, false, Muted, "lastUpdateCheck"); lastUpdateLabel.Anchor = AnchorStyles.Right;
         AddAutoRow(updateCard, SettingRow("上次检查", "更新渠道：Stable", lastUpdateLabel)); AddAutoRow(stack, updateCard);
 
+        BuildRefreshSettings(stack);
+
         var projectCard = SettingsCard("applicationProjectCard");
         AddSectionHeading(projectCard, "项目", "查看源码仓库与已发布的版本内容。" );
         var repository = MakeButton("GitHub 仓库 ↗", false, 142); repository.Name = "repositoryLink";
@@ -222,7 +260,7 @@ internal sealed partial class EnhancementForm {
     private void BuildFeatureSettings() {
         var stack = SettingsStack(featurePage);
         var navigationCard = SettingsCard("featureNavigationCard");
-        AddSectionHeading(navigationCard, "链接导航", "控制外部链接在 Lucanet 客户端中的打开方式。" );
+        AddSectionHeading(navigationCard, "链接跳转", "控制链接在 Lucanet 客户端中的打开方式。" );
         bool enabled = true;
         try { enabled = settingsStore.Features.LoadLinksInNewWindow(); } catch (IOException) { enabled = false; } catch (UnauthorizedAccessException) { enabled = false; }
         linksInNewWindow = new SettingToggle { Name = "linksInNewWindow", Checked = enabled,
@@ -261,10 +299,28 @@ internal sealed partial class EnhancementForm {
         var shortcutHint = SettingsLabel("点击输入框后按组合键。默认 Alt + R，仅对当前脚本弹窗生效。",9,false,Muted,"scriptShortcutHint");
         scriptShortcut.ShortcutRejected += message => { shortcutHint.Text=message; shortcutHint.ForeColor=Amber; };
         scriptShortcut.ShortcutChanged += delegate { if(SaveScriptSettings()) { shortcutHint.Text="快捷键已保存，打开的脚本弹窗立即使用新设置。";shortcutHint.ForeColor=Muted; } };
-        AddAutoRow(scriptCard,SettingRow("开始快捷键", "支持 Ctrl / Alt + 字母、数字或 F1–F12，也可组合 Shift。",scriptShortcut));
+        AddAutoRow(scriptCard,SettingRow("“开始”快捷键", "支持 Ctrl / Alt + 字母、数字或 F1–F12，也可组合 Shift。",scriptShortcut));
         shortcutHint.Margin=new Padding(0,8,0,0);AddAutoRow(scriptCard,shortcutHint);
         AddAutoRow(stack,scriptCard);
-        var card = SettingsCard("featureRefreshCard");
+        var dialogCard=SettingsCard("featureDialogCard");
+        AddSectionHeading(dialogCard,"场景对话框","调整操作设为“显示为对话框”时的窗口外观。");
+        bool nativeFrame=true;
+        try{nativeFrame=settingsStore.Features.LoadNativeSceneDialogFrame();}
+        catch(IOException){nativeFrame=false;}catch(UnauthorizedAccessException){nativeFrame=false;}
+        nativeSceneDialogFrame=new SettingToggle {Name="nativeSceneDialogFrame",Checked=nativeFrame,
+            AccessibleName="使用系统边框和关闭按钮",Anchor=AnchorStyles.Right};
+        nativeSceneDialogFrame.CheckedChanged+=delegate {
+            if(restoringSceneDialogFrame)return;
+            try{settingsStore.Features.SaveNativeSceneDialogFrame(nativeSceneDialogFrame.Checked);}
+            catch(Exception error){restoringSceneDialogFrame=true;nativeSceneDialogFrame.Checked=!nativeSceneDialogFrame.Checked;restoringSceneDialogFrame=false;
+                ShowMessage("对话框样式未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(dialogCard,SettingRow("使用系统边框和关闭按钮","与脚本运行窗口一致，默认开启；已打开的场景对话框也会实时更新。",nativeSceneDialogFrame));
+        AddAutoRow(stack,dialogCard);
+    }
+
+    private void BuildRefreshSettings(TableLayoutPanel stack) {
+        var card = SettingsCard("applicationRefreshCard");
         AddSectionHeading(card, "状态刷新", "配置工作区的状态检查频率，设置立即生效。" );
         autoRefresh = new SettingToggle { Name = "autoRefresh", Checked = preferences.AutoRefresh,
             AccessibleName = "自动刷新", Anchor = AnchorStyles.Right };
@@ -276,10 +332,6 @@ internal sealed partial class EnhancementForm {
         refreshSeconds.ValueChanged += delegate { SaveRefreshPreferences(); };
         AddAutoRow(card, SettingRow("刷新间隔", "2–300 秒，默认 8 秒；关闭自动刷新后仍可手动检查。", interval));
         AddAutoRow(stack, card);
-        var reset = MakeButton("恢复功能默认设置", false, 170); reset.Name = "resetFeatureSettings";
-        reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
-            scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
-        AddAutoRow(stack, ButtonRow(reset));
     }
 
     private bool SaveScriptSettings() {
@@ -310,7 +362,7 @@ internal sealed partial class EnhancementForm {
         var b=new Button { Text=text,Width=width,Height=36,FlatStyle=FlatStyle.Flat,BackColor=primary?Purple:Color.White,ForeColor=primary?Color.White:Navy,Cursor=Cursors.Hand,Margin=new Padding(0,0,10,0),UseVisualStyleBackColor=false };
         b.FlatAppearance.BorderColor=primary?Purple:Color.FromArgb(207,216,224);b.FlatAppearance.MouseOverBackColor=primary?Color.FromArgb(133,53,196):Color.FromArgb(245,238,252);return b;
     }
-    private void StyleTab(Button button,bool selected){if(button==null)return;button.BackColor=selected?Color.FromArgb(239,229,249):Color.White;button.ForeColor=selected?Purple:Navy;button.FlatAppearance.BorderColor=selected?Purple:Color.FromArgb(218,225,232);}
+    private void StyleNavigation(Button button,bool selected){button.BackColor=selected?Purple:Navy;button.ForeColor=Color.White;button.FlatAppearance.MouseOverBackColor=selected?Color.FromArgb(133,53,196):Color.FromArgb(22,65,82);}
     private TableLayoutPanel MakeCard(string title,string name,out Label value,out Label detail) {
         var card=new TableLayoutPanel { Dock=DockStyle.Fill,BackColor=Color.White,ColumnCount=1,RowCount=3,Padding=new Padding(16,15,12,12),Margin=new Padding(0,0,12,0) };
         card.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));card.RowStyles.Add(new RowStyle(SizeType.Absolute,25));card.RowStyles.Add(new RowStyle(SizeType.Absolute,40));card.RowStyles.Add(new RowStyle(SizeType.Percent,100));

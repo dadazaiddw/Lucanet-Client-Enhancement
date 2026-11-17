@@ -3,6 +3,53 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
+// 合成整棵导航控件树，原生子窗口也在完整绘制后一起呈现，避免切页残影。
+internal sealed class NavigationSurface : Panel {
+    protected override CreateParams CreateParams {
+        get { var parameters=base.CreateParams;parameters.ExStyle|=0x02000000;return parameters; } // WS_EX_COMPOSITED
+    }
+}
+
+internal enum NavigationGlyph { Settings, Back }
+
+// 图标随按钮尺寸绘制，避免依赖符号字体；图标与文字共用按钮的点击和键盘语义。
+internal sealed class NavigationIconButton : Button {
+    private readonly NavigationGlyph glyph;
+    internal NavigationIconButton(NavigationGlyph glyph) {
+        this.glyph = glyph;
+        SetStyle(ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+    protected override void OnPaint(PaintEventArgs e) {
+        base.OnPaint(e);
+        GraphicsState state = e.Graphics.Save();
+        try {
+            e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            float scale = Height / 44F;
+            float x = glyph == NavigationGlyph.Back ? 22F * scale : Width / 2F;
+            float y = Height / 2F;
+            using (var pen = new Pen(Enabled ? ForeColor : SystemColors.GrayText, 1.7F * scale)) {
+                pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round; pen.LineJoin = LineJoin.Round;
+                if (glyph == NavigationGlyph.Back) {
+                    e.Graphics.DrawLine(pen, x - 7 * scale, y, x + 7 * scale, y);
+                    e.Graphics.DrawLines(pen, new[] {new PointF(x - scale, y - 6 * scale),
+                        new PointF(x - 7 * scale, y), new PointF(x - scale, y + 6 * scale)});
+                } else {
+                    var points = new PointF[32];
+                    for (int tooth = 0; tooth < 8; tooth++) {
+                        for (int corner = 0; corner < 4; corner++) {
+                            double angle = (tooth * 45 + new[] {-17, -12, 12, 17}[corner]) * Math.PI / 180;
+                            float radius = (corner == 0 || corner == 3 ? 8F : 11F) * scale;
+                            points[tooth * 4 + corner] = new PointF(x + (float)Math.Cos(angle) * radius, y + (float)Math.Sin(angle) * radius);
+                        }
+                    }
+                    e.Graphics.DrawPolygon(pen, points);
+                    e.Graphics.DrawEllipse(pen, x - 3.5F * scale, y - 3.5F * scale, 7F * scale, 7F * scale);
+                }
+            }
+        } finally { e.Graphics.Restore(state); }
+    }
+}
+
 // 设置行的开关：保留 CheckBox 键盘/辅助功能语义，紫色与 Lucanet 主操作一致。
 internal class SettingToggle : CheckBox {
     private bool hovered, pressed;

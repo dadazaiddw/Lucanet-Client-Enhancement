@@ -70,6 +70,16 @@ internal sealed class FeatureSettingsStore {
     internal void SaveScriptDoubleClick(bool enabled) {
         SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"scriptDoubleClick",enabled ? "true" : "false"}});
     }
+    internal bool LoadNativeSceneDialogFrame() {
+        if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
+            string line=source.Trim();
+            if(line.StartsWith("nativeSceneDialogFrame=",StringComparison.Ordinal))return line.Substring("nativeSceneDialogFrame=".Length).Trim().Equals("true",StringComparison.OrdinalIgnoreCase);
+        }
+        return true;
+    }
+    internal void SaveNativeSceneDialogFrame(bool enabled) {
+        SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"nativeSceneDialogFrame",enabled ? "true" : "false"}});
+    }
     internal ScriptFeatureSettings LoadScript() {
         bool hidden = true; string shortcut = "ALT+R";
         if (File.Exists(path)) foreach (string source in File.ReadAllLines(path, Encoding.UTF8)) {

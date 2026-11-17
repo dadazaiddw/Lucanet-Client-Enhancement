@@ -39,12 +39,14 @@ if ([IO.File]::ReadAllText($lockedFile) -ne 'keep locked content') { throw 'Lock
 if ($LASTEXITCODE -ne 0) { throw 'Native startup propagation / built-in exit handling test failed.' }
 & $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.DialogIsolationTest
 if ($LASTEXITCODE -ne 0) { throw 'Session-state independence / non-client isolation test failed.' }
-Write-Host "All tests passed. Evidence: $testRoot"
 & $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\features.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.NavigationTest
 if ($LASTEXITCODE -ne 0) { throw 'Live navigation feature tests failed.' }
 & $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\script-features.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.ScriptControlsTest
 if ($LASTEXITCODE -ne 0) { throw 'Live script controls tests failed.' }
 & $java '-Djava.awt.headless=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\double-click.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.ScriptDoubleClickTest
 if ($LASTEXITCODE -ne 0) { throw 'Live script double-click tests failed.' }
+& $java '-Xverify:all' '-Djava.awt.headless=false' '--add-opens=java.desktop/java.awt=ALL-UNNAMED' '--add-opens=java.desktop/sun.awt.windows=ALL-UNNAMED' '-Dfixture.checkNativeModality=true' "-javaagent:$agent" "-Dlucanet.enhancement.runtime=$testRoot\runtime" "-Dlucanet.enhancement.features=$testRoot\scene-features.properties" "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.SceneDialogStyleTest
+if ($LASTEXITCODE -ne 0) { throw 'Live scene dialog style tests failed.' }
 & $java -cp "$classes;$agent" cn.lucanet.enhancement.exit.HotUpdateTest (Join-Path $testRoot 'hot update 中文') $agent
 if ($LASTEXITCODE -ne 0) { throw 'Hot update transaction tests failed.' }
+Write-Host "All tests passed. Evidence: $testRoot"

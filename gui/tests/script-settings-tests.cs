@@ -18,6 +18,9 @@ internal static class ScriptSettingsTests {
             var handle=form.Handle;form.Navigate("features");
             var hidden=(CheckBox)form.Controls.Find("hideScriptStart",true).Single();
             var doubleClick=(CheckBox)form.Controls.Find("scriptDoubleClick",true).Single();
+            var sceneFrame=(CheckBox)form.Controls.Find("nativeSceneDialogFrame",true).Single();
+            Check(sceneFrame.Checked && store.Features.LoadNativeSceneDialogFrame(),"scene frame default enabled");
+            sceneFrame.Checked=false;Check(!store.Features.LoadNativeSceneDialogFrame(),"scene frame persists immediately");
             var shortcut=(ShortcutBox)form.Controls.Find("scriptRunShortcut",true).Single();
             Check(doubleClick.Checked && store.Features.LoadScriptDoubleClick(),"double-click default enabled");
             doubleClick.Checked=false;Check(!store.Features.LoadScriptDoubleClick(),"double-click disabled immediately");
@@ -36,10 +39,16 @@ internal static class ScriptSettingsTests {
             hidden.Checked=false;
             Check(store.Features.LoadLinksInNewWindow() && File.ReadAllText(features).Contains("futureFeature=keep"),"script save preserves navigation and future settings");
             Check(!store.Features.LoadScriptDoubleClick(),"other settings preserve disabled double-click");
+            Check(!store.Features.LoadNativeSceneDialogFrame(),"other settings preserve disabled scene frame");
             var reset=(Button)form.Controls.Find("resetFeatureSettings",true).Single();
             typeof(Button).GetMethod("OnClick",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(reset,new object[]{EventArgs.Empty});
             Check(hidden.Checked && store.Features.LoadScript().HideStart && store.Features.LoadScript().Shortcut=="ALT+R","restore defaults enables hiding");
             Check(doubleClick.Checked && store.Features.LoadScriptDoubleClick(),"restore defaults enables double-click");
+            Check(sceneFrame.Checked && store.Features.LoadNativeSceneDialogFrame(),"restore defaults enables scene frame");
+            using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
+                sceneFrame.Checked=false;Check(sceneFrame.Checked,"failed save restores the displayed scene setting");
+            }
+            Check(messages==1 && store.Features.LoadNativeSceneDialogFrame(),"failed save reports once and preserves configuration");messages=0;
             Check(messages==0,"normal edits do not show dialogs");form.Close();
         }
         foreach(string invalid in new[]{"R","SHIFT+R","CTRL+CTRL+R","ALT+F4","CTRL+ENTER","WIN+R"}) {

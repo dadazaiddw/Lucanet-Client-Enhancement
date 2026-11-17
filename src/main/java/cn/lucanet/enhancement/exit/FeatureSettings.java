@@ -46,4 +46,8 @@ final class FeatureSettings {
         try { return Boolean.parseBoolean(load().getProperty("scriptDoubleClick", "true")); }
         catch (Exception failure) { return false; }
     }
+    static boolean nativeSceneDialogFrame() {
+        try { return Boolean.parseBoolean(load().getProperty("nativeSceneDialogFrame", "true").trim()); }
+        catch (Exception failure) { return false; }
+    }
 }

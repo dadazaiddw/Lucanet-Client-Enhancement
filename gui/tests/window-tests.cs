@@ -19,6 +19,7 @@ internal static class WindowTests {
                 var native = VerifyNativeDpi(args[0]);
                 while (!native.IsCompleted) { Application.DoEvents(); Thread.Sleep(5); }
                 native.GetAwaiter().GetResult();
+                NavigationTests.Verify(Path.Combine(args[0],"navigation"));
                 ToggleTests.Verify(Path.Combine(args[0],"toggles"));
                 Console.WriteLine("PASS: real system DPI manifest, first-hidden settings pages, text/icon bounds and resize recovery");
                 return 0;
@@ -61,8 +62,9 @@ internal static class WindowTests {
             var workspace = controls.Single(c => c.Name == "workspacePage");
             Check(!All(workspace).Any(c => c.Name == "autoRefresh" || c.Name == "refreshSeconds" || c.Name == "refreshToolbar"), "workspace has no settings toolbar");
             form.Navigate("features");
-            Check(All(controls.Single(c => c.Name == "featureSettings")).Contains(interval), "refresh moved to features");
+            Check(!All(controls.Single(c => c.Name == "featureSettings")).Contains(interval), "features only contains enhancement preferences");
             form.Navigate("application");
+            Check(All(controls.Single(c => c.Name == "applicationSettings")).Contains(interval), "refresh available in application settings");
             Check(controls.Any(c => c.Name == "appVersion" && c.Text == "v"+AppInfo.Version), "application metadata");
             Check(!controls.Any(c => c.Text.Contains("赞助") || c.Text.Contains("反馈问题")), "no unsupported settings links");
             form.Navigate("workspace");
@@ -72,6 +74,13 @@ internal static class WindowTests {
             // 在屏幕可见区域之外渲染自身控件；不操作其他窗口或触发 UAC。
             form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-20000, -20000);
             form.ShowInTaskbar = false; form.Show(); Application.DoEvents(); form.PerformLayout();
+            CheckNavigationBounds(form,"workspace","initial workspace");
+            ((Button)controls.Single(c=>c.Name=="settingsNavigation")).PerformClick();Application.DoEvents();
+            CheckNavigationBounds(form,"application","gear opens application settings");
+            ((Button)controls.Single(c=>c.Name=="featureNavigation")).PerformClick();Application.DoEvents();
+            CheckNavigationBounds(form,"features","sidebar opens features");
+            ((Button)controls.Single(c=>c.Name=="workspaceNavigation")).PerformClick();Application.DoEvents();
+            CheckNavigationBounds(form,"workspace","return restores full workspace width");
             using (var image = new Bitmap(form.Width, form.Height)) {
                 form.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
                 image.Save(Path.Combine(work, "layout-100.png"));
@@ -148,13 +157,16 @@ internal static class WindowTests {
                     Check(All(form).Single(c=>c.Name=="workspacePage").Visible==(page=="workspace"),"workspace visibility");
                     Check(All(form).Single(c=>c.Name=="applicationSettings").Visible==(page=="application"),"application visibility");
                     Check(All(form).Single(c=>c.Name=="featureSettings").Visible==(page=="features"),"features visibility");
-                    if(page=="features")CheckRefreshBounds(form, scale, tag + " enabled");
+                    CheckNavigationBounds(form,page,tag);
+                    if(page=="application")CheckRefreshBounds(form, scale, tag + " enabled");
                     if(page!="workspace")CheckSettingsContent(form,page,tag);
+                    if(page!="workspace")((Panel)All(form).Single(c=>c.Name==(page=="application"?"applicationSettings":"featureSettings"))).AutoScrollPosition=Point.Empty;
                     using (var image = new Bitmap(form.Width, form.Height)) {
                         form.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
                         image.Save(Path.Combine(work,page+"-"+tag+".png"));
                     }
                 }
+                form.Navigate("application");Application.DoEvents();
                 var checkbox = (CheckBox)All(form).Single(c => c.Name == "autoRefresh");
                 var seconds = (NumericUpDown)All(form).Single(c => c.Name == "refreshSeconds");
                 checkbox.Checked = true; seconds.Value = 300; Application.DoEvents();
@@ -166,8 +178,11 @@ internal static class WindowTests {
                 form.Width = Math.Max(form.MinimumSize.Width, form.Width - (int)(40 * scale));
                 form.PerformLayout(); Application.DoEvents();
                 CheckRefreshBounds(form, scale, tag + " narrow window");
+                CheckNavigationBounds(form,"application",tag+" narrow window");
                 checkbox.Checked = false; Application.DoEvents();
                 CheckRefreshBounds(form, scale, tag + " disabled");
+                form.Navigate("workspace");Application.DoEvents();
+                CheckNavigationBounds(form,"workspace",tag+" return after resize");
                 form.Close();
             }
         }
@@ -175,8 +190,8 @@ internal static class WindowTests {
 
     private static void CheckRefreshBounds(Form form, float scale, string scenario) {
         var toolbar = (RefreshIntervalControl)All(form).Single(c => c.Name == "refreshInterval");
-        // 功能卡片可继续扩展；检查滚动到控件后的可达性，而非要求整页始终塞进视口。
-        ((Panel)All(form).Single(c=>c.Name=="featureSettings")).ScrollControlIntoView(toolbar);Application.DoEvents();
+        // 应用卡片可继续扩展；检查滚动到控件后的可达性，而非要求整页始终塞进视口。
+        ((Panel)All(form).Single(c=>c.Name=="applicationSettings")).ScrollControlIntoView(toolbar);Application.DoEvents();
         var seconds = (NumericUpDown)All(toolbar).Single(c => c.Name == "refreshSeconds");
         var unit = All(toolbar).Single(c => c.Name == "refreshUnit");
         var content = Rectangle.FromLTRB(toolbar.Padding.Left, toolbar.Padding.Top,
@@ -216,18 +231,31 @@ internal static class WindowTests {
             Console.WriteLine("Native DPI: " + dpi + "; client: " + form.ClientSize);
             foreach (string page in new[] {"application","features","workspace","features","application"}) {
                 form.Navigate(page); form.PerformLayout(); Application.DoEvents();
-                if (page == "workspace") continue;
-                CheckSettingsContent(form,page,"native " + dpi);
+                CheckNavigationBounds(form,page,"native " + dpi);
+                if (page != "workspace") CheckSettingsContent(form,page,"native " + dpi);
                 using(var image=new Bitmap(form.Width,form.Height)) {
                     form.DrawToBitmap(image,new Rectangle(Point.Empty,image.Size));
                     image.Save(Path.Combine(work,"native-"+page+"-"+dpi+".png"));
+                }
+                if(page=="features") {
+                    var featuresPanel=(Panel)All(form).Single(c=>c.Name=="featureSettings");
+                    var toggle=All(featuresPanel).Single(c=>c.Name=="nativeSceneDialogFrame");
+                    featuresPanel.AutoScrollPosition=new Point(0,featuresPanel.DisplayRectangle.Height);Application.DoEvents();
+                    Check(featuresPanel.RectangleToScreen(featuresPanel.ClientRectangle).Contains(toggle.RectangleToScreen(toggle.ClientRectangle)),"scene frame toggle reachable by scrolling");
+                    using(var image=new Bitmap(form.Width,form.Height)) {
+                        form.DrawToBitmap(image,new Rectangle(Point.Empty,image.Size));
+                        image.Save(Path.Combine(work,"native-scene-setting-"+dpi+".png"));
+                    }
+                    featuresPanel.AutoScrollPosition=Point.Empty;
                 }
             }
             form.Size = form.MinimumSize; Application.DoEvents();
             foreach(string page in new[]{"features","application"}) {
                 form.Navigate(page);form.PerformLayout();Application.DoEvents();
+                CheckNavigationBounds(form,page,"native minimum " + dpi);
                 CheckSettingsContent(form,page,"native minimum " + dpi);
             }
+            CheckRefreshBounds(form,dpi/96F,"native minimum interval");
             updater.Result = new ReleaseUpdate { State = UpdateState.Available, Version = "1.1.0",
                 PageUrl = AppInfo.Releases, AssetUrl = AppInfo.Repository + "/releases/download/v1.1.0/lucanet-client-enhancement.zip", Sha256 = new string('a',64) };
             await form.CheckForUpdatesAsync(true); form.PerformLayout(); Application.DoEvents();
@@ -244,6 +272,33 @@ internal static class WindowTests {
             Check(panel.ClientRectangle.Contains(new Rectangle(location,projectLink.Size)),"project link is reachable by scrolling");
             form.Close();
         }
+    }
+
+    private static void CheckNavigationBounds(Form form,string page,string scenario) {
+        bool workspace=page=="workspace";
+        var sidebar=All(form).Single(c=>c.Name=="settingsSidebar");
+        var main=All(form).Single(c=>c.Name=="mainContent");
+        var gear=All(form).Single(c=>c.Name=="settingsNavigation");
+        Check(sidebar.Visible!=workspace && gear.Visible==workspace,scenario+": workspace gear and settings sidebar visibility");
+        Check(All(form).Single(c=>c.Name=="workspacePage").Visible==workspace,scenario+": workspace reachable");
+        Check(All(form).Single(c=>c.Name=="applicationSettings").Visible==(page=="application"),scenario+": application reachable");
+        Check(All(form).Single(c=>c.Name=="featureSettings").Visible==(page=="features"),scenario+": features reachable");
+        Check(All(form).Single(c=>c.Name=="pageTitle").Text==(workspace?"工作区":page=="application"?"应用":"功能"),scenario+": title follows selected tab");
+        Check(main.Left==(workspace?0:sidebar.Right) && main.Right==main.Parent.ClientSize.Width,scenario+": main content fills available width without sidebar gap");
+        if(workspace) {
+            Check(gear.Parent.ClientRectangle.Contains(gear.Bounds),scenario+": gear fully visible");
+            Check(gear.Left>=All(form).Single(c=>c.Name=="pageTitle").Right,scenario+": gear clear of title");
+            return;
+        }
+        foreach(string name in new[]{"workspaceNavigation","applicationNavigation","featureNavigation","resetFeatureSettings","sidebarVersion"}) {
+            var control=All(sidebar).Single(c=>c.Name==name);
+            Check(control.Visible && sidebar.ClientRectangle.Contains(control.Bounds),scenario+": sidebar item visible: "+name);
+            var text=TextRenderer.MeasureText(control.Text,control.Font,Size.Empty,TextFormatFlags.SingleLine);
+            Check(control.Width-control.Padding.Horizontal>=text.Width && control.Height>=text.Height,scenario+": sidebar text fits: "+name);
+        }
+        var reset=All(sidebar).Single(c=>c.Name=="resetFeatureSettings");
+        Check(reset.Bottom<=All(sidebar).Single(c=>c.Name=="sidebarVersion").Top,scenario+": reset above version");
+        Check(reset.Top>=All(sidebar).Single(c=>c.Name=="featureNavigation").Bottom,scenario+": reset clear of navigation");
     }
 
     private static void CheckSettingsContent(Form form, string page, string scenario) {
@@ -268,7 +323,7 @@ internal static class WindowTests {
         var blocks=content.Controls.Cast<Control>().Where(c=>c.Visible).OrderBy(c=>c.Top).ToArray();
         for(int i=1;i<blocks.Length;i++)Check(blocks[i].Top>=blocks[i-1].Bottom,scenario+": overlapping settings cards");
         if(page=="application") {
-            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.2",scenario+": application version fixed at 1.0.2");
+            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.3",scenario+": application version fixed at 1.0.3");
             var icon=All(panel).Single(c=>c.Name=="applicationIcon");
             var identity=All(panel).Single(c=>c.Name=="applicationIdentity");
             Check(icon.Bottom<=identity.Height,scenario+": icon fully contained in identity card");

@@ -43,7 +43,7 @@ final class NativeTransformer implements ClassFileTransformer {
 
     static boolean isTarget(String name) {
         return APPLICATION.equals(name) || CONFIG.equals(name) || DIALOG.equals(name) || LINK.equals(name) || PANEL.equals(name)
-                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name);
+                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name) || SceneDialogStyle.CREATOR.equals(name);
     }
 
     @Override
@@ -51,6 +51,12 @@ final class NativeTransformer implements ClassFileTransformer {
                             ProtectionDomain domain, byte[] bytes) {
         if (!isTarget(name)) { return null; }
         try {
+            if(SceneDialogStyle.CREATOR.equals(name)) {
+                if(!NativeBridge.isDesktopClient(loader))return null;
+                byte[] transformed=SceneDialogTransformer.transform(bytes);
+                SceneDialogStyle.prepareWindowAccess(instrumentation);
+                SceneDialogStyle.ensureInstalled();EnhancementLog.info("TRANSFORMED: "+name);return transformed;
+            }
             boolean scriptClass=PANEL.equals(name)||SCRIPT_GENERAL.equals(name)||EXPLORER_INTERACTION.equals(name);
             if (scriptClass && !NativeBridge.isDesktopClient(loader)) { return null; }
             AgentRuntime.connectModule(instrumentation, module, name);
