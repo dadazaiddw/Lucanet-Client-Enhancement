@@ -43,7 +43,8 @@ final class NativeTransformer implements ClassFileTransformer {
 
     static boolean isTarget(String name) {
         return APPLICATION.equals(name) || CONFIG.equals(name) || DIALOG.equals(name) || LINK.equals(name) || PANEL.equals(name)
-                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name) || SceneDialogStyle.CREATOR.equals(name) || JavaEditorAssist.SOURCE.equals(name);
+                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name) || SceneDialogStyle.CREATOR.equals(name) || JavaEditorAssist.SOURCE.equals(name)
+                || CustomJavaTransformer.CODE.equals(name) || CustomJavaTransformer.INTERACTION.equals(name) || CustomJavaTransformer.EDITOR.equals(name) || CustomJavaTransformer.RENAME.equals(name);
     }
 
     @Override
@@ -51,6 +52,17 @@ final class NativeTransformer implements ClassFileTransformer {
                             ProtectionDomain domain, byte[] bytes) {
         if (!isTarget(name)) { return null; }
         try {
+            if(CustomJavaTransformer.target(name)) {
+                if(!NativeBridge.isDesktopClient(loader))return null;
+                CustomJavaTransformer.openAccess(instrumentation,module);
+                byte[] result=CustomJavaTransformer.transform(name,bytes);
+                javax.swing.UIManager.put(CustomJavaModel.SOURCE_HANDLER,(java.util.function.Function<Object,String>)CustomJavaModel::sourceForCode);
+                javax.swing.UIManager.put(CustomJavaDetails.HANDLER,(java.util.function.Predicate<Object>)CustomJavaDetails::show);
+                javax.swing.UIManager.put(CustomJavaDetails.RENAME,(java.util.function.Function<Object,java.util.List<String>>)CustomJavaDetails::renameError);
+                CustomJavaTypes.ensureInstalled(()->JavaEditorAssist.isCurrent(this));
+                JavaEditorAssist.ensureInstalled(()->JavaEditorAssist.isCurrent(this));
+                EnhancementLog.info("CUSTOM_JAVA_HOOK_READY: "+name);return result;
+            }
             if(JavaEditorAssist.SOURCE.equals(name)) {
                 if(!NativeBridge.isDesktopClient(loader))return null;
                 if(module!=null && module.isNamed()) {

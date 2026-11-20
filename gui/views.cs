@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 
 internal sealed partial class EnhancementForm {
-    private Panel pageHost, workspacePage, settingsPage, applicationPage, featurePage;
+    private Panel pageHost, workspacePage, settingsPage, applicationPage, featurePage, codePage;
     private Panel navigationShell;
     private TableLayoutPanel sidebar;
-    private Button workspaceNav, settingsNav, applicationNav, featureNav;
+    private Button workspaceNav, settingsNav, applicationNav, featureNav, codeNav;
     private Label pageTitle, updateStatus, lastUpdateLabel;
     private Button checkUpdatesButton, downloadUpdateButton, openUpdateButton;
     private TableLayoutPanel updateActionRow;
@@ -21,6 +21,8 @@ internal sealed partial class EnhancementForm {
     private CheckBox scriptDoubleClick;
     private CheckBox nativeSceneDialogFrame;
     private bool restoringSceneDialogFrame;
+    private CheckBox customJavaTypes;
+    private bool restoringCustomJavaTypes;
     private CheckBox javaEditorAssist;
     private bool restoringJavaEditorAssist;
     private NumericUpDown javaCompletionFontSize;
@@ -38,15 +40,17 @@ internal sealed partial class EnhancementForm {
         // Dock 自动回收隐藏侧栏的宽度，切换页面时沿用当前 DPI 下的尺寸。
         var shell = navigationShell = new NavigationSurface { Name="navigationShell", Dock=DockStyle.Fill, Margin=new Padding(0) };
         Controls.Add(shell);
-        sidebar = new TableLayoutPanel { Name="settingsSidebar", Dock=DockStyle.Left, Width=176, BackColor=Navy, ColumnCount=1, RowCount=8, Padding=new Padding(14,22,14,14), Margin=new Padding(0) };
+        sidebar = new TableLayoutPanel { Name="settingsSidebar", Dock=DockStyle.Left, Width=176, BackColor=Navy, ColumnCount=1, RowCount=10, Padding=new Padding(14,22,14,14), Margin=new Padding(0) };
         sidebar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
-        foreach(int height in new[]{44,22,44,8,44}) sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,height));
+        foreach(int height in new[]{44,22,44,8,44,8,44}) sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,height));
         sidebar.RowStyles.Add(new RowStyle(SizeType.Percent,100)); sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,44)); sidebar.RowStyles.Add(new RowStyle(SizeType.Absolute,30));
         workspaceNav=NavigationButton("返回工作区","workspaceNavigation",true);workspaceNav.Click+=delegate{Navigate("workspace");};
         applicationNav=NavigationButton("应用","applicationNavigation");applicationNav.Click+=delegate{Navigate("application");};
-        featureNav=NavigationButton("功能","featureNavigation");featureNav.Click+=delegate{Navigate("features");};
+        featureNav=NavigationButton("界面","featureNavigation");featureNav.Click+=delegate{Navigate("features");};
+        codeNav=NavigationButton("代码","codeNavigation");codeNav.Click+=delegate{Navigate("code");};
+        sidebar.Controls.Add(codeNav,0,6);
         sidebar.Controls.Add(workspaceNav,0,0);sidebar.Controls.Add(applicationNav,0,2);sidebar.Controls.Add(featureNav,0,4);
-        sidebar.Controls.Add(new Label { Name="sidebarVersion", Text="v"+AppInfo.Version,ForeColor=Color.FromArgb(172,194,207),Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft },0,7);
+        sidebar.Controls.Add(new Label { Name="sidebarVersion", Text="v"+AppInfo.Version,ForeColor=Color.FromArgb(172,194,207),Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft },0,9);
 
         var main=new TableLayoutPanel { Name="mainContent",Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Margin=new Padding(0) };
         main.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));main.RowStyles.Add(new RowStyle(SizeType.Absolute,62));main.RowStyles.Add(new RowStyle(SizeType.Percent,100));
@@ -67,7 +71,7 @@ internal sealed partial class EnhancementForm {
         // Load 在窗口首次呈现前执行；预备隐藏页的原生控件，避免首次点击时集中创建。
         Load+=delegate {
             Navigate("application");CreatePageHandles(settingsPage);CreatePageHandles(sidebar);
-            Navigate("features");Navigate("workspace");
+            Navigate("features");Navigate("code");Navigate("workspace");
         };
     }
 
@@ -85,10 +89,10 @@ internal sealed partial class EnhancementForm {
         try {
             // 先隐藏离开的页面，再调整侧栏和目标内容，避免旧页面按临时宽度重排。
             if(workspace)settingsPage.Visible=false;else workspacePage.Visible=false;
-            if(!workspace){applicationPage.Visible=page=="application";featurePage.Visible=page=="features";}
+            if(!workspace){applicationPage.Visible=page=="application";featurePage.Visible=page=="features";codePage.Visible=page=="code";}
             sidebar.Visible=!workspace;settingsNav.Visible=workspace;
-            pageTitle.Text=workspace?"工作区":page=="application"?applicationNav.Text:featureNav.Text;
-            StyleNavigation(applicationNav,page=="application");StyleNavigation(featureNav,page=="features");
+            pageTitle.Text=workspace?"工作区":page=="application"?applicationNav.Text:page=="code"?codeNav.Text:featureNav.Text;
+            StyleNavigation(applicationNav,page=="application");StyleNavigation(featureNav,page=="features");StyleNavigation(codeNav,page=="code");
             if(workspace){workspacePage.BringToFront();workspacePage.Visible=true;}
             else{settingsPage.BringToFront();settingsPage.Visible=true;}
         } finally {
@@ -149,13 +153,14 @@ internal sealed partial class EnhancementForm {
     private void BuildSettings() {
         applicationPage=new Panel { Name="applicationSettings",Dock=DockStyle.Fill,AutoScroll=true,BackColor=BackColor,Padding=new Padding(0,0,0,4) };
         featurePage=new Panel { Name="featureSettings",Dock=DockStyle.Fill,AutoScroll=true,BackColor=BackColor,Padding=new Padding(0,0,0,4),Visible=false };
-        settingsPage.Controls.Add(featurePage);settingsPage.Controls.Add(applicationPage);
-        BuildApplicationSettings();BuildFeatureSettings();
+        codePage=new Panel { Name="codeSettings",Dock=DockStyle.Fill,AutoScroll=true,BackColor=BackColor,Padding=new Padding(0,0,0,4),Visible=false };
+        settingsPage.Controls.Add(codePage);settingsPage.Controls.Add(featurePage);settingsPage.Controls.Add(applicationPage);
+        BuildApplicationSettings();BuildFeatureSettings();BuildCodeSettings();
         var reset=NavigationButton("恢复默认设置","resetFeatureSettings");
         tips.SetToolTip(reset,"恢复功能及状态刷新默认值，保留更新设置。");
         reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
-            javaEditorAssist.Checked=true;javaCompletionFontSize.Value=18;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
-        sidebar.Controls.Add(reset,0,6);
+            customJavaTypes.Checked=true;javaEditorAssist.Checked=true;javaCompletionFontSize.Value=FeatureSettingsStore.DefaultJavaFontSize;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
+        sidebar.Controls.Add(reset,0,8);
     }
 
     // 设置页使用 AutoSize 行，不把像素行高与字体 DPI 缩放混在一起。
@@ -306,31 +311,6 @@ internal sealed partial class EnhancementForm {
         AddAutoRow(scriptCard,SettingRow("“开始”快捷键", "支持 Ctrl / Alt + 字母、数字或 F1–F12，也可组合 Shift。",scriptShortcut));
         shortcutHint.Margin=new Padding(0,8,0,0);AddAutoRow(scriptCard,shortcutHint);
         AddAutoRow(stack,scriptCard);
-        var editorCard=SettingsCard("featureJavaEditorCard");
-        AddSectionHeading(editorCard,"Java 编码辅助","结合当前源代码与自定义 Class 补全代码、查看参数、自动导包及展开后缀模板。");
-        bool assist=true;
-        try{assist=settingsStore.Features.LoadJavaEditorAssist();}catch(IOException){assist=false;}catch(UnauthorizedAccessException){assist=false;}
-        javaEditorAssist=new SettingToggle {Name="javaEditorAssist",Checked=assist,AccessibleName="Java 编码辅助",Anchor=AnchorStyles.Right};
-        javaEditorAssist.CheckedChanged+=delegate {
-            if(restoringJavaEditorAssist)return;
-            try{settingsStore.Features.SaveJavaEditorAssist(javaEditorAssist.Checked);}
-            catch(Exception error){restoringJavaEditorAssist=true;javaEditorAssist.Checked=!javaEditorAssist.Checked;restoringJavaEditorAssist=false;
-                ShowMessage("编码辅助设置未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
-        };
-        AddAutoRow(editorCard,SettingRow("启用 Java 编码辅助","默认开启；已打开的编辑框约 250 毫秒内更新，关闭后恢复原编辑方式。",javaEditorAssist));
-        AddAutoRow(editorCard,SettingsDivider());
-        int lookupSize=18;
-        try{lookupSize=settingsStore.Features.LoadJavaCompletionFontSize();}catch(IOException){}catch(UnauthorizedAccessException){}
-        javaCompletionFontSize=new NumericUpDown {Name="javaCompletionFontSize",Minimum=12,Maximum=30,Value=lookupSize,
-            Width=90,Anchor=AnchorStyles.Right,AccessibleName="代码提示字号"};
-        javaCompletionFontSize.ValueChanged+=delegate {
-            if(restoringJavaCompletionFontSize)return;
-            try{settingsStore.Features.SaveJavaCompletionFontSize((int)javaCompletionFontSize.Value);lookupSize=(int)javaCompletionFontSize.Value;}
-            catch(Exception error){restoringJavaCompletionFontSize=true;javaCompletionFontSize.Value=lookupSize;restoringJavaCompletionFontSize=false;
-                ShowMessage("提示字号未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
-        };
-        AddAutoRow(editorCard,SettingRow("代码提示字号","默认 18，支持 12–30；补全列表及参数提示立即更新。",javaCompletionFontSize));
-        AddAutoRow(stack,editorCard);
         var dialogCard=SettingsCard("featureDialogCard");
         AddSectionHeading(dialogCard,"场景对话框","调整操作设为“显示为对话框”时的窗口外观。");
         bool nativeFrame=true;
@@ -346,6 +326,48 @@ internal sealed partial class EnhancementForm {
         };
         AddAutoRow(dialogCard,SettingRow("使用系统边框和关闭按钮","与脚本运行窗口一致，默认开启；已打开的场景对话框也会实时更新。",nativeSceneDialogFrame));
         AddAutoRow(stack,dialogCard);
+    }
+
+    private void BuildCodeSettings() {
+        var stack=SettingsStack(codePage);
+        var typesCard=SettingsCard("codeCustomTypesCard");
+        AddSectionHeading(typesCard,"自定义 Java 类型","在 Class 文件夹按 Alt+Insert 新建类型，双击类型打开完整源码编辑窗口。");
+        bool enabled=true;
+        try{enabled=settingsStore.Features.LoadCustomJavaTypes();}catch(IOException){enabled=false;}catch(UnauthorizedAccessException){enabled=false;}
+        customJavaTypes=new SettingToggle {Name="customJavaTypes",Checked=enabled,AccessibleName="自定义 Java 类型",Anchor=AnchorStyles.Right};
+        customJavaTypes.CheckedChanged+=delegate {
+            if(restoringCustomJavaTypes)return;
+            try{settingsStore.Features.SaveCustomJavaTypes(customJavaTypes.Checked);}
+            catch(Exception error){restoringCustomJavaTypes=true;customJavaTypes.Checked=!customJavaTypes.Checked;restoringCustomJavaTypes=false;
+                ShowMessage("自定义类型设置未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(typesCard,SettingRow("启用自定义 Java 类型","默认开启，切换后立即生效；已打开窗口中的草稿仍可保存。",customJavaTypes));
+        AddAutoRow(stack,typesCard);
+        var editorCard=SettingsCard("featureJavaEditorCard");
+        AddSectionHeading(editorCard,"Java 编码辅助","结合当前源代码与自定义 Class 补全代码、查看参数、自动导包及展开后缀模板。");
+        bool assist=true;
+        try{assist=settingsStore.Features.LoadJavaEditorAssist();}catch(IOException){assist=false;}catch(UnauthorizedAccessException){assist=false;}
+        javaEditorAssist=new SettingToggle {Name="javaEditorAssist",Checked=assist,AccessibleName="Java 编码辅助",Anchor=AnchorStyles.Right};
+        javaEditorAssist.CheckedChanged+=delegate {
+            if(restoringJavaEditorAssist)return;
+            try{settingsStore.Features.SaveJavaEditorAssist(javaEditorAssist.Checked);}
+            catch(Exception error){restoringJavaEditorAssist=true;javaEditorAssist.Checked=!javaEditorAssist.Checked;restoringJavaEditorAssist=false;
+                ShowMessage("编码辅助设置未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(editorCard,SettingRow("启用 Java 编码辅助","默认开启；已打开的编辑框约 250 毫秒内更新，关闭后恢复原编辑方式。",javaEditorAssist));
+        AddAutoRow(editorCard,SettingsDivider());
+        int lookupSize=FeatureSettingsStore.DefaultJavaFontSize;
+        try{lookupSize=settingsStore.Features.LoadJavaCompletionFontSize();}catch(IOException){}catch(UnauthorizedAccessException){}
+        javaCompletionFontSize=new NumericUpDown {Name="javaCompletionFontSize",Minimum=12,Maximum=30,Value=lookupSize,
+            Width=90,Anchor=AnchorStyles.Right,AccessibleName="字号"};
+        javaCompletionFontSize.ValueChanged+=delegate {
+            if(restoringJavaCompletionFontSize)return;
+            try{settingsStore.Features.SaveJavaCompletionFontSize((int)javaCompletionFontSize.Value);lookupSize=(int)javaCompletionFontSize.Value;}
+            catch(Exception error){restoringJavaCompletionFontSize=true;javaCompletionFontSize.Value=lookupSize;restoringJavaCompletionFontSize=false;
+                ShowMessage("字号未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(editorCard,SettingRow("字号","默认 20，支持 12–30，即时应用到补全、参数提示及自定义 Java 类型窗口。",javaCompletionFontSize));
+        AddAutoRow(stack,editorCard);
     }
 
     private void BuildRefreshSettings(TableLayoutPanel stack) {

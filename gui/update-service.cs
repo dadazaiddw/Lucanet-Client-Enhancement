@@ -132,6 +132,7 @@ internal sealed class GitHubUpdateService : IUpdateService {
         }
         if (Directory.Exists(destination) || File.Exists(destination)) throw new IOException("更新目标必须是新目录。");
         string root = Path.GetFullPath(destination).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+        string applicationRoot = destination;
         using (var zip = ZipFile.OpenRead(zipPath)) {
             if (zip.Entries.Count > 3000) throw new InvalidDataException("更新包文件数量异常。");
             long total = 0; var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -151,9 +152,17 @@ internal sealed class GitHubUpdateService : IUpdateService {
                 if (!files.Add(name.TrimEnd('/'))) throw new InvalidDataException("更新包含重复路径。");
                 if (!name.EndsWith("/") && entry.Length > 0) nonemptyFiles.Add(name);
             }
+            // 新交付包使用固定外层目录；仍支持旧的平铺包。全包校验后再选择实际程序目录。
+            const string packageDirectory = "lucanet-client-enhancement";
+            const string packagePrefix = packageDirectory + "/";
+            bool wrapped = files.Any(name => name.Equals(packageDirectory,StringComparison.OrdinalIgnoreCase) || name.StartsWith(packagePrefix,StringComparison.OrdinalIgnoreCase));
+            if (wrapped && (nonemptyFiles.Contains(packageDirectory) || files.Any(name => !name.Equals(packageDirectory,StringComparison.OrdinalIgnoreCase) && !name.StartsWith(packagePrefix,StringComparison.OrdinalIgnoreCase))))
+                throw new InvalidDataException("更新包必须只包含 lucanet-client-enhancement 文件夹，不能混用多种目录结构。");
+            string prefix = wrapped ? packagePrefix : "";
             foreach (string required in new[] {"enhancement.exe","install.ps1","resolve-lucanet-jdk.ps1","tools/gui-service.ps1","tools/gui-core.ps1","dist/client-enhancement.jar"}) {
-                if (!nonemptyFiles.Contains(required)) throw new InvalidDataException("该发布未提供兼容的完整更新包，请在 GitHub 发布页下载。缺少："+required);
+                if (!nonemptyFiles.Contains(prefix+required)) throw new InvalidDataException("该发布未提供兼容的完整更新包，请在 GitHub 发布页下载。缺少："+prefix+required);
             }
+            if (wrapped) applicationRoot = Path.Combine(destination,packageDirectory);
             Directory.CreateDirectory(destination);
             foreach (var entry in zip.Entries) {
                 string target = Path.Combine(destination,entry.FullName.Replace('/',Path.DirectorySeparatorChar).Replace('\\',Path.DirectorySeparatorChar));
@@ -161,7 +170,7 @@ internal sealed class GitHubUpdateService : IUpdateService {
                 else { Directory.CreateDirectory(Path.GetDirectoryName(target)); entry.ExtractToFile(target,false); }
             }
         }
-        return destination;
+        return applicationRoot;
     }
 
     private static async Task<byte[]> ReadLimitedAsync(HttpResponseMessage response,int maximum) {

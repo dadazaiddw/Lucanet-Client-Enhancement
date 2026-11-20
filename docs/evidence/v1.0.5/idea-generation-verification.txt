@@ -1,0 +1,11 @@
+PASS: Maven/EXE/JAR/assembly/manifest versions remain 1.0.5; final generation classes present.
+PASS: identical generic/versioned ZIP, six runtime files under lucanet-client-enhancement/.
+PASS: README links and navigation anchors resolve; no release history/project version.
+SHA256 8E9B6A7EA595CBCF8FBAB110B25CDAA472F0E6F8C3F2BE3268ECDF89996C02FE
+ZIP bytes 463965
+lucanet-client-enhancement/enhancement.exe
+lucanet-client-enhancement/install.ps1
+lucanet-client-enhancement/resolve-lucanet-jdk.ps1
+lucanet-client-enhancement/tools/gui-core.ps1
+lucanet-client-enhancement/tools/gui-service.ps1
+lucanet-client-enhancement/dist/client-enhancement.jar

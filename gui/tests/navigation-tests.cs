@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -36,8 +36,8 @@ internal static class NavigationTests {
             for(int cycle=0;cycle<5;cycle++) {
                 if(cycle==3){form.Size=form.MinimumSize;Application.DoEvents();}
                 if(cycle==4){form.Width+=160;Application.DoEvents();}
-                foreach(string target in new[]{"application","features","workspace","application","application","workspace"}) {
-                    string button=target=="workspace"?"workspaceNavigation":target=="features"?"featureNavigation":
+                foreach(string target in new[]{"application","features","code","workspace","application","application","workspace"}) {
+                    string button=target=="workspace"?"workspaceNavigation":target=="features"?"featureNavigation":target=="code"?"codeNavigation":
                         controls.Single(c=>c.Name=="workspacePage").Visible?"settingsNavigation":"applicationNavigation";
                     layouts=0;var watch=Stopwatch.StartNew();
                     ((Button)controls.Single(c=>c.Name==button)).PerformClick();
@@ -46,7 +46,7 @@ internal static class NavigationTests {
                     Application.DoEvents();watch.Stop();times.Add(watch.Elapsed.TotalMilliseconds);
                     lines.Add(String.Format("{0},{1},{2:F2},{3},{4:F2},{5:F2}",cycle,target,watch.Elapsed.TotalMilliseconds,layouts,layoutTime,paintTime));
                     if(!baseline) {
-                        string title=target=="workspace"?"工作区":target=="application"?"应用":"功能";
+                        string title=target=="workspace"?"工作区":target=="application"?"应用":target=="code"?"代码":"界面";
                         Check(controls.Single(c=>c.Name=="pageTitle").Text==title,"title follows selected tab");
                     }
                     Check(directory.Text==@"D:\Test\Lucanet","navigation preserves selected installation");

@@ -1,0 +1,12 @@
+GUI up to date: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\enhancement.exe
+PASS: enhancement.exe compiled as a DPI-aware Windows GUI without console output
+PASS: GitHub stable releases, numeric version comparison, no downgrade, 404/rate limit, checksum download, full package, redirect allowlist and ZIP traversal rejection
+PASS: script hide/defaults/key capture, live persistence, safe validation and preservation of other feature settings
+PASS: real helper discovery/status timeout, helper cleanup, UI/cursor recovery, silent background retry and uninterrupted write transaction
+PASS: toggle off/on/hover/pressed/focus/disabled repaint at 100%-200%, clean parent-colored corners, accessibility and Space key
+PASS: compact layout, refresh persistence, quiet/background recovery, stale-result guard, successful relaunch closure and canceled/failed relaunch recovery
+PASS: workspace/application/features navigation and settings layout at simulated 100/125/150/175/200 percent scaling
+Native DPI: 168; client: {Width=1890, Height=1260}
+Navigation: first=51.2 ms; median=27.3 ms; max=59.2 ms
+PASS: toggle off/on/hover/pressed/focus/disabled repaint at 100%-200%, clean parent-colored corners, accessibility and Space key
+PASS: real system DPI manifest, first-hidden settings pages, text/icon bounds and resize recovery

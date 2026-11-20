@@ -24,7 +24,7 @@ public final class JavaIntelligenceTest {
             check(service.apply(input).stream().anyMatch(v->v.get("name").equals("substring")),"native method signature retained");
             input=request("val|");input.put("part","execute");input.put("source","class Demo { String value; void execute() { } }");
             check(service.apply(input).stream().anyMatch(v->v.get("name").equals("value")),"native class members");
-            verifyContext();verifyParameters();verifyArgumentCompletion();verifyGenericPresentation();verifyPostfix();verifyConstructorAccess();verifyIconKinds();verifyImports();
+            verifyContext();verifyParameters();verifyArgumentCompletion();verifyGenericPresentation();verifyPostfix();verifyConstructorAccess();verifyIconKinds();verifyImports();verifyTypeActions();
             System.out.println("PASS: Java semantic completion, overloads, generic chains/parameters, scope, access control, imports and native class context");
         }
     }
@@ -32,6 +32,46 @@ public final class JavaIntelligenceTest {
         Map<String,Object> input=new HashMap<>();input.put("text",marked.replace("|",""));input.put("caret",marked.indexOf('|'));input.put("classpath","");return input;
     }
     static List<Map<String,String>> complete(String marked) {return engine.apply(request(marked));}
+    static List<Map<String,String>> unitAction(String source,String operation) {
+        Map<String,Object> input=request(source);input.put("compilationUnit",true);input.put("operation",operation);
+        return engine.apply(input);
+    }
+    static String applyAction(String marked,Map<String,String> action) {
+        String source=marked.replace("|","");
+        int start=Integer.parseInt(action.get("replaceStart")),end=Integer.parseInt(action.get("replaceEnd"));
+        javax.swing.JTextArea text=new javax.swing.JTextArea(source.substring(0,start)+action.get("insert")+source.substring(end));
+        text.setCaretPosition(start+action.get("insert").length());
+        for(String name:action.getOrDefault("imports","").split("\n"))if(!name.isBlank())JavaUnitImports.add(text,name);
+        return text.getText().substring(0,text.getCaretPosition())+"|"+text.getText().substring(text.getCaretPosition());
+    }
+    static void verifyTypeActions() {
+        for(String type:List.of("java.util.Comparator","java.util.Comparator<String>")) {
+            String source="import java.util.*;\npublic class Demo implements "+type+" {\n    |\n}\n";
+            List<Map<String,String>> errors=unitAction(source,"diagnostics");
+            check(errors.size()==1&&errors.get(0).get("code").equals("compiler.err.does.not.override.abstract"),"javac reports missing compare before save: "+errors);
+            List<Map<String,String>> fixes=unitAction(source,"quickFix");
+            check(!fixes.isEmpty()&&fixes.get(0).get("label").equals("实现 compare()"),"Alt+Enter offers Comparator implementation inside class: "+fixes);
+            String updated=applyAction(source,fixes.get(0));
+            String argument=type.endsWith(">")?"String":"Object";
+            check(updated.contains("int compare("+argument)&&unitAction(updated,"diagnostics").isEmpty(),"generated Comparator implementation compiles: "+updated);
+            List<Map<String,String>> methods=unitAction(updated,"override");
+            check(methods.stream().noneMatch(row->Set.of("compare","wait","comparing").contains(row.get("name"))),"already implemented, final and static methods omitted");
+            Map<String,String> reverse=named(methods,"reversed");
+            check(reverse.get("insert").contains("Comparator.super.reversed()")
+                &&unitAction(applyAction(updated,reverse),"diagnostics").isEmpty(),"generated override preserves the default interface implementation");
+        }
+        String base="class Base<T> { protected T identity(T value) throws java.io.IOException { return value; } }\n";
+        String nested=base+"class Outer { class Inner extends Base<String> {\n    |\n}}\n";
+        Map<String,String> method=named(unitAction(nested,"override"),"identity");
+        check(method.get("insert").contains("protected String identity(String value)")&&
+            method.get("insert").contains("return super.identity(value)"),"nested class overrides parent with the actual generic signature and preserves its behavior");
+        check(unitAction(applyAction(nested,method),"diagnostics").isEmpty(),"generated nested override compiles");
+        String incomplete="class Demo { void run(){ int x = 1|\n} }";
+        List<Map<String,String>> fixes=unitAction(incomplete,"quickFix");
+        check(!fixes.isEmpty()&&";".equals(fixes.get(0).get("insert"))&&unitAction(applyAction(incomplete,fixes.get(0)),"diagnostics").isEmpty(),
+            "quick fix inserts expected semicolon: "+fixes+"; diagnostics: "+unitAction(incomplete,"diagnostics"));
+        check(unitAction("class Demo { File| file; }","quickFix").stream().anyMatch(row->"java.io.File".equals(row.get("import"))),"full source Alt+Enter still offers imports");
+    }
     static void verifyArgumentCompletion() {
         List<Map<String,String>> members=complete("java.util.List.of(\"1\",\"2\",\"3\").forEach(System.|)");
         check(members.stream().anyMatch(v->v.get("name").equals("out"))&&members.stream().anyMatch(v->v.get("name").equals("err")),"argument receiver members replace enclosing signature");

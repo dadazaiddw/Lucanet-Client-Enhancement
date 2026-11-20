@@ -14,6 +14,7 @@ $files = @(
     'tools/gui-service.ps1'
 )
 $archive = Join-Path $PSScriptRoot 'dist\lucanet-client-enhancement.zip'
+$packageDirectory = 'lucanet-client-enhancement/'
 # 按交付白名单直接写 ZIP，不再生成一整份 release-* 源码/JAR 副本。
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -44,7 +45,7 @@ try {
     $zip = [IO.Compression.ZipFile]::Open($temporary, [IO.Compression.ZipArchiveMode]::Create)
     try {
         foreach ($entry in $entries) {
-            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $entry.Path, $entry.Name, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $entry.Path, ($packageDirectory + $entry.Name), [IO.Compression.CompressionLevel]::Optimal) | Out-Null
         }
     } finally { $zip.Dispose() }
     Move-Item -LiteralPath $temporary -Destination $archive -Force
@@ -70,4 +71,4 @@ $checksumLines = foreach ($file in @($agent, (Join-Path $PSScriptRoot 'enhanceme
 }
 $checksumLines | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'dist\SHA256SUMS.txt') -Encoding ascii
 Write-Host "Packaged: $archive"
-Write-Host 'Runtime package: 6 files. Extract all files and open enhancement.exe.'
+Write-Host 'Runtime package: 6 files inside lucanet-client-enhancement/. Extract all files and open lucanet-client-enhancement/enhancement.exe.'

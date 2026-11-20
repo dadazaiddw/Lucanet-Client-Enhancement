@@ -1,6 +1,7 @@
 package cn.lucanet.enhancement.exit;
 
 import java.awt.*;
+import java.io.File;
 import java.lang.invoke.*;
 import java.lang.reflect.*;
 import java.net.*;
@@ -13,8 +14,18 @@ import javax.swing.text.JTextComponent;
  * permission, dirty-state, notification and reflection-stack checks remain in place. */
 final class JavaEditorContext {
     static final String PACKAGE="com.lucanet.common.dom.script.java.";
+    private static final String LIBRARY_MANAGER="com.lucanet.sarah.base.customerprogram.CustomerProgramFileManagerBase";
+    private static final String LIBRARY_PROVIDER="lucanet.api.util.AdditionalLibrariesProvider";
+    private static final ClassValue<String> BASE_CLASSPATH=new ClassValue<String>() {
+        @Override protected String computeValue(Class<?> type){return classpath(type);}
+    };
     final Object editor, code, context, part, sourceEditor;
+    final JTextComponent unitText;
+    final Map<?,?> unit;
     JavaEditorContext(JTextComponent text) throws Throwable {
+        Object document=text.getClientProperty(CustomJavaModel.DOCUMENT);
+        unit=document instanceof Map?(Map<?,?>)document:null;unitText=unit==null?null:text;
+        if(unit!=null){editor=unit.get("section");context=unit.get("context");Object owner=unit.get("owner");code=owner==null?null:CustomJavaModel.javaCode(owner);part=null;sourceEditor=null;return;}
         Object root=null,source=null;
         for(Component c=text;c!=null;c=c.getParent()) {
             if(c.getClass().getName().equals(PACKAGE+"JavaSourceCodeEditor"))source=c;
@@ -28,19 +39,65 @@ final class JavaEditorContext {
     Map<String,Object> request(JTextComponent text,String operation) throws Throwable {
         Map<String,Object> result=new HashMap<>();
         result.put("operation",operation);result.put("text",text.getText());result.put("caret",text.getCaretPosition());
-        result.put("source",code==null?"":call(code,"getSourceCode"));
+        result.put("source",unit!=null?text.getText():code==null?"":call(code,"getSourceCode"));
+        if(unit!=null)result.put("compilationUnit",true);
         result.put("part",part==null?"":call(part,"getName"));
         if(part!=null)try{result.put("partBody",call(part,"getBody"));}catch(NoSuchMethodException notMethod){}
         if(part!=null&&part.getClass().getName().equals(PACKAGE+"LocalMethodPart")) {
             String signature="f";try{if(part.getClass().getDeclaredMethod("e").getReturnType()==String.class)signature="e";}catch(NoSuchMethodException legacy){}
             result.put("partSignature",declared(part,signature));
         }
-        result.put("sources",relatedSources());
+        Object script=script();
+        result.put("sources",relatedSources(script,unit==null?null:unit.get("owner")));
         if(operation.equals("organize"))result.putAll(importState());
-        result.put("classpath",classpath(text.getClass()));
+        addClasspath(result,script==null?text.getClass():script.getClass(),script);
         return result;
     }
+
+    private Object script()throws Throwable {
+        if(unit!=null)return call(unit.get("parent"),"getDOMRootNode");
+        if(code==null)return null;
+        Object owner=field(code,"com.lucanet.common.dom.script.elements.ScriptElement");
+        return owner==null?null:call(owner,"getScript");
+    }
+
+    private static void addClasspath(Map<String,Object> request,Class<?> editorType,Object script) {
+        List<File> libraries=additionalLibraries(script);
+        StringJoiner paths=new StringJoiner(File.pathSeparator);
+        String base=BASE_CLASSPATH.get(editorType);
+        if(!base.isEmpty())paths.add(base);
+        List<List<?>> revision=new ArrayList<>();
+        for(File file:libraries) {
+            if(!file.isFile())continue;
+            paths.add(file.getAbsolutePath());
+            revision.add(List.of(file.getAbsolutePath(),file.lastModified(),file.length()));
+        }
+        request.put("classpath",paths.toString());
+        request.put("libraryRevision",revision);
+    }
+
+    private static List<File> additionalLibraries(Object script) {
+        if(script==null)return List.of();
+        try {
+            Object files;
+            try {
+                Object provider=call(script,"getAdditionalLibrariesProvider");
+                Class<?> api=Class.forName(LIBRARY_PROVIDER,false,script.getClass().getClassLoader());
+                files=provider==null?null:MethodHandles.lookup().unreflect(api.getMethod("getAdditionalLibrariesForCompilation")).invoke(provider);
+            }catch(NoSuchMethodException legacy) {
+                Class<?> manager=Class.forName(LIBRARY_MANAGER,false,script.getClass().getClassLoader());
+                Object instance=MethodHandles.lookup().unreflect(manager.getMethod("getInstance")).invoke();
+                files=instance==null?null:MethodHandles.lookup().unreflect(manager.getMethod("getCustomerProgramFilesForCompilation")).invoke(instance);
+            }
+            if(!(files instanceof Collection))return List.of();
+            List<File> result=new ArrayList<>();
+            for(Object file:(Collection<?>)files)if(file instanceof File)result.add((File)file);
+            return result;
+        }catch(ThreadDeath | VirtualMachineError fatal){throw fatal;}
+        catch(Throwable unavailable){return List.of();} // Also used before the client connects to a server.
+    }
     Map<String,List<String>> importState()throws Throwable {
+        if(unit!=null){List<String> names=JavaUnitImports.names(unitText.getText());Map<String,List<String>> state=new LinkedHashMap<>();state.put("importNames",names);state.put("editableImports",new ArrayList<>(names));return state;}
         List<String> names=new ArrayList<>(),editable=new ArrayList<>();Object folder=code==null?null:importFolder();
         if(folder!=null){List<Object> entries=new ArrayList<>();collectImports(folder,entries);for(Object entry:entries){
             String name=String.valueOf(call(entry,"getName"));names.add(name);if(Boolean.TRUE.equals(call(entry,"isDeletable")))editable.add(name);
@@ -48,24 +105,22 @@ final class JavaEditorContext {
         Map<String,List<String>> result=new LinkedHashMap<>();result.put("importNames",names);result.put("editableImports",editable);return result;
     }
     /** Snapshot the same Script's Class tree on the EDT; never retain business model objects in javac. */
-    private Map<String,String> relatedSources() throws Throwable {
-        Map<String,String> sources=new LinkedHashMap<>();if(code==null)return sources;
-        Object owner=field(code,"com.lucanet.common.dom.script.elements.ScriptElement");
-        if(owner==null)return sources;
-        Object script=call(owner,"getScript");if(script==null)return sources;
-        collectSources(call(script,"getClassRoot"),sources,Collections.newSetFromMap(new IdentityHashMap<>()));
+    private static Map<String,String> relatedSources(Object script,Object current) throws Throwable {
+        Map<String,String> sources=new LinkedHashMap<>();
+        if(script!=null)collectSources(call(script,"getClassRoot"),current,sources,Collections.newSetFromMap(new IdentityHashMap<>()));
         return sources;
     }
-    private static void collectSources(Object node,Map<String,String> result,Set<Object> visited)throws Throwable {
-        if(node==null||!visited.add(node))return;
+    private static void collectSources(Object node,Object current,Map<String,String> result,Set<Object> visited)throws Throwable {
+        if(node==null||node==current||!visited.add(node))return;
         if(node.getClass().getName().equals("com.lucanet.common.dom.script.elements.classes.ClassElement")) {
             String name=String.valueOf(call(node,"getJavaClassName"));Object source=call(node,"getSourceCode");
             if(source instanceof String)result.put(name,(String)source);
         }
-        for(Object child:(List<?>)call(node,"getChildren"))collectSources(child,result,visited);
+        for(Object child:(List<?>)call(node,"getChildren"))collectSources(child,current,result,visited);
     }
     /** Returns the short name if imported, otherwise a fully qualified name that is always usable. */
     String importType(String qualified) throws Throwable {
+        if(unit!=null)return JavaUnitImports.reference(unitText.getText(),qualified,unit.get("parent").getClass().getClassLoader());
         String simple=qualified.substring(qualified.lastIndexOf('.')+1);
         boolean implicit=qualified.startsWith("java.lang.") && qualified.substring(10).indexOf('.')<0;
         if(code==null || context==null || editor==null || !Boolean.TRUE.equals(call(editor,"isUsable")))return implicit?simple:qualified;
@@ -80,7 +135,7 @@ final class JavaEditorContext {
         java.util.regex.Matcher pkg=java.util.regex.Pattern.compile("\\bpackage\\s+([\\w.]+)\\s*;").matcher(source);
         String currentPackage=pkg.find()?pkg.group(1):"";
         if(qualified.equals(currentPackage+"."+simple))return simple;
-        for(String custom:relatedSources().values()) {
+        for(String custom:relatedSources(script(),null).values()) {
             String lexical=JavaEditing.mask(custom);
             if(java.util.regex.Pattern.compile("\\b(?:class|interface|enum|record)\\s+"+java.util.regex.Pattern.quote(simple)+"\\b").matcher(lexical).find()&&
                     java.util.regex.Pattern.compile("\\bpackage\\s+"+java.util.regex.Pattern.quote(currentPackage)+"\\s*;").matcher(lexical).find())return qualified;
@@ -116,6 +171,7 @@ final class JavaEditorContext {
         Object folder=importFolder();if(folder!=null)sortFolder(folder);
     }
     void applyImports(List<String> expected,List<String> requested)throws Throwable {
+        if(unit!=null){JavaUnitImports.apply(unitText,expected,requested);return;}
         if(code==null||context==null||!Boolean.TRUE.equals(call(editor,"isUsable")))return;
         Object folder=importFolder();if(folder==null)return;
         List<Object> current=new ArrayList<>();collectImports(folder,current);List<String> names=new ArrayList<>();

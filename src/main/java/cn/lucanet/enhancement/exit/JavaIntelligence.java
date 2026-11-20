@@ -18,24 +18,35 @@ import javax.tools.*;
  * Loaded behind a platform-parent classloader so protocol-1 agents can also load jdk.compiler. */
 public final class JavaIntelligence implements Function<Map<String,Object>,List<Map<String,String>>>, AutoCloseable {
     private static final String MARK = "__lucanet_completion__";
+    private static final Pattern TYPE_NAME=Pattern.compile("\\b(?:class|interface|enum|record)\\s+([\\p{javaJavaIdentifierPart}]+)");
+    private static final Pattern PACKAGE_NAME=Pattern.compile("\\bpackage\\s+([\\p{javaJavaIdentifierPart}.]+)\\s*;");
     private final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
     private StandardJavaFileManager files;
     private String classpath;
+    private Object libraryRevision;
     private final SortedMap<String,SortedSet<String>> classes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private boolean indexed;
     private Map<String,String> companionSources=Collections.emptyMap();
     private Set<String> customNames=Collections.emptySet();
+    private Map<?,?> lastCompanions;
+    private List<String> lastPartKey;
+    private int partFrom=-1,partTo=-1;
 
     @Override public synchronized List<Map<String,String>> apply(Map<String,Object> input) {
         if (compiler == null) throw new IllegalStateException("当前 Lucanet JDK 未提供 Java 编译器");
         try {
-            configure((String) input.getOrDefault("classpath", ""));
+            configure((String) input.getOrDefault("classpath", ""),input.get("libraryRevision"));
             String operation = (String) input.getOrDefault("operation", "complete");
-            companionSources=new LinkedHashMap<>();
-            Object companions=input.get("sources");
-            if(companions instanceof Map)for(Map.Entry<?,?> entry:((Map<?,?>)companions).entrySet())
-                if(entry.getValue() instanceof String)companionSources.put(sourceName((String)entry.getValue()),(String)entry.getValue());
-            customNames=new HashSet<>(companionSources.keySet());
+            Map<?,?> companions=input.get("sources") instanceof Map?(Map<?,?>)input.get("sources"):Map.of();
+            if(!companions.equals(lastCompanions)){
+                companionSources=new LinkedHashMap<>();
+                for(Object candidate:companions.values())if(candidate instanceof String){
+                    String source=(String)candidate;
+                    companionSources.put(sourceName(source),source);
+                }
+                customNames=new HashSet<>(companionSources.keySet());
+                lastCompanions=new LinkedHashMap<>(companions);
+            }
             if (operation.equals("index")) { index(); return Collections.emptyList(); }
             String text = (String) input.getOrDefault("text", "");
             int caret = Math.max(0,Math.min(text.length(), (Integer) input.getOrDefault("caret", text.length())));
@@ -45,28 +56,39 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             while (end < text.length() && Character.isJavaIdentifierPart(text.charAt(end))) end++;
             String prefix = text.substring(start, caret);
             boolean member = start > 0 && text.charAt(start - 1) == '.';
-            boolean imports = operation.equals("import");
+            boolean quickFix=operation.equals("quickFix");
+            boolean imports = operation.equals("import")||quickFix;
             Map<String,Map<String,String>> result = new LinkedHashMap<>();
             String[] embedded = embed(input, text);
             int base = Integer.parseInt(embedded[1]);
             if(operation.equals("parameters"))return parameters(text,caret,embedded);
             if(operation.equals("organize"))return organize(input,embedded[0]);
+            Analysis attributed=null;
+            List<Map<String,String>> fixes=List.of();
+            if(quickFix||operation.equals("diagnostics")||operation.equals("override")||operation.startsWith("generate:")){
+                DiagnosticCollector<JavaFileObject> collector=new DiagnosticCollector<>();
+                attributed=analyze(embedded[0],true,collector,true);
+                List<Diagnostic<? extends JavaFileObject>> errors=new ArrayList<>();
+                for(Diagnostic<? extends JavaFileObject> diagnostic:collector.getDiagnostics())
+                    if(diagnostic.getKind()==Diagnostic.Kind.ERROR&&diagnostic.getSource()!=null&&
+                        diagnostic.getSource().toUri().equals(attributed.unit.getSourceFile().toUri()))errors.add(diagnostic);
+                if(operation.equals("diagnostics"))return JavaTypeActions.diagnostics(errors,text.length());
+                JavaTypeActions actions=new JavaTypeActions(attributed.unit,attributed.trees,attributed.elements,attributed.types,text,caret);
+                if(operation.startsWith("generate:"))return new JavaMemberGeneration(attributed.unit,attributed.trees,attributed.elements,attributed.types,text,caret).apply(operation.substring(9),input);
+                if(operation.equals("override"))return actions.overrides();
+                fixes=actions.fixes(errors);
+            }
             if (!imports) {
                 String suffix = end < text.length() && text.charAt(end) == '(' ? "" : "()";
                 String source = embedded[0].substring(0, base + start) + MARK + suffix + embedded[0].substring(base + end);
                 Analysis analysis = analyze(source, true);
-                TreePath[] found = {null};
-                new TreePathScanner<Void,Void>() {
-                    @Override public Void visitIdentifier(IdentifierTree node, Void ignored) {
-                        if (node.getName().contentEquals(MARK)) found[0] = getCurrentPath();
-                        return super.visitIdentifier(node, ignored);
-                    }
-                    @Override public Void visitMemberSelect(MemberSelectTree node, Void ignored) {
-                        if (node.getIdentifier().contentEquals(MARK)) found[0] = getCurrentPath();
-                        return super.visitMemberSelect(node, ignored);
-                    }
-                }.scan(analysis.unit, null);
-                TreePath path = found[0];
+                TreePath path=marker(analysis);
+                if(!suffix.isEmpty()&&(path==null||path.getLeaf() instanceof MemberSelectTree&&analysis.trees.getTypeMirror(new TreePath(path,((MemberSelectTree)path.getLeaf()).getExpression()))==null)) {
+                    // Annotation defaults and declaration positions reject a synthetic method call.
+                    source=embedded[0].substring(0,base+start)+MARK+embedded[0].substring(base+end);
+                    analysis=analyze(source,true);path=marker(analysis);
+                }
+                if(path!=null)attributed=analysis;
                 if (path != null) {
                     analysis.expected=expectedType(analysis,path);
                     Scope scope;
@@ -97,22 +119,22 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             if (!member && !prefix.isEmpty()) {
                 if (!indexed) index();
                 int count = 0;
-                Analysis types = analyze(embedded[0], true);
-                Map<String,SortedSet<String>> candidates=new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-                for(Map.Entry<String,SortedSet<String>> e:classes.entrySet())if(matches(e.getKey(),prefix))candidates.put(e.getKey(),new TreeSet<>(e.getValue()));
-                for(String name:customNames)candidates.computeIfAbsent(simpleName(name),k->new TreeSet<>()).add(name);
+                Analysis types = attributed!=null?attributed:analyze(embedded[0], true);
                 List<String> qualifiedNames=new ArrayList<>();
-                for (Map.Entry<String,SortedSet<String>> entry : candidates.entrySet()) {
-                    if (!matches(entry.getKey(), prefix) || imports && !entry.getKey().equals(prefix)) continue;
-                    qualifiedNames.addAll(entry.getValue());
-                }
+                if(imports)qualifiedNames.addAll(classes.getOrDefault(prefix,Collections.emptySortedSet()));
+                else for(Map.Entry<String,SortedSet<String>> entry:classes.entrySet())
+                    if(matches(entry.getKey(),prefix))qualifiedNames.addAll(entry.getValue());
+                qualifiedNames.removeIf(name->imports&&!simpleName(name).equals(prefix));
+                for(String name:customNames)
+                    if(imports?simpleName(name).equals(prefix):matches(simpleName(name),prefix))qualifiedNames.add(name);
                 qualifiedNames.sort(Comparator.comparingInt((String q)->matchRank(simpleName(q),prefix)).thenComparingInt(q->classRank(q,types.unit))
                         .thenComparing(q->simpleName(q),String.CASE_INSENSITIVE_ORDER).thenComparing(q->q));
+                String currentPackage=types.unit.getPackageName()==null?"":types.unit.getPackageName().toString();
                 for(String qualified:qualifiedNames) {
                         TypeElement type;
                         try { type = types.elements.getTypeElement(qualified); }
                         catch (RuntimeException | LinkageError badLibrary) { continue; }
-                        if (type==null||!publicType(type) && !(customNames.contains(qualified)&&packageName(qualified).equals(packageName(sourceName(embedded[0]))))) continue;
+                        if (type==null||!publicType(type) && !(customNames.contains(qualified)&&packageName(qualified).equals(currentPackage))) continue;
                         String name=simpleName(qualified);
                         Map<String,String> value=add(result,name,name+" — "+qualified,name,qualified,type!=null&&type.getKind().isInterface()?"interface":"class",name.length());
                         value.put("rank",String.valueOf(classRank(qualified,types.unit)));value.put("detail",packageName(qualified));
@@ -131,39 +153,75 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                     .thenComparingInt(value->Integer.parseInt(value.getOrDefault("rank","50")))
                     .thenComparing(value -> value.get("name"), String.CASE_INSENSITIVE_ORDER)
                     .thenComparing(value -> value.get("label")));
+            values.addAll(0,fixes);
+            if(Boolean.TRUE.equals(input.get("compilationUnit"))&&values.stream().anyMatch(row->!row.getOrDefault("import","").isEmpty())){
+                Analysis context=attributed!=null?attributed:analyze(embedded[0],true);
+                TreePath location=JavaGeneratedNames.at(context.unit,context.trees,caret);
+                JavaGeneratedNames names=new JavaGeneratedNames(context.unit,context.trees,context.elements,location);
+                for(Map<String,String> value:values){
+                    String qualified=value.getOrDefault("import","");if(qualified.isEmpty())continue;
+                    // Candidates are alternatives: each gets an independent import plan.
+                    Map<String,String> plan=new HashMap<>();plan.put("insert",qualified);
+                    new JavaGeneratedNames(names).shorten(plan);
+                    value.put("unitReference",plan.get("insert"));value.put("imports",plan.getOrDefault("imports",""));
+                }
+            }
             return values.size() > 150 ? values.subList(0,150) : values;
         } catch (IOException failure) { throw new UncheckedIOException(failure); }
     }
 
-    private void configure(String next) throws IOException {
-        if (files != null && Objects.equals(classpath,next)) return;
+    private void configure(String next,Object nextRevision) throws IOException {
+        if (files != null && Objects.equals(classpath,next)&&Objects.equals(libraryRevision,nextRevision)) return;
         if (files != null) files.close();
         files = compiler.getStandardFileManager(null, Locale.ROOT, java.nio.charset.StandardCharsets.UTF_8);
         List<File> paths = new ArrayList<>();
         for (String path : next.split(Pattern.quote(File.pathSeparator))) if (!path.isEmpty() && Files.exists(Path.of(path))) paths.add(new File(path));
         files.setLocation(StandardLocation.CLASS_PATH, paths);
-        classpath = next; indexed = false; classes.clear();
+        classpath = next; libraryRevision=nextRevision; indexed = false; classes.clear();
     }
 
     /** Use the native class structure, replacing only the active member in the analysis copy. */
     private String[] embed(Map<String,Object> input, String text) throws IOException {
+        if(Boolean.TRUE.equals(input.get("compilationUnit")))return new String[]{text,"0"};
         String source = (String) input.getOrDefault("source", "");
         String name = (String) input.getOrDefault("part", "");
         if (!source.isEmpty() && !name.isEmpty()) {
-            Analysis original = analyze(source,false);
-            long[] range = {-1,-1};int[] best={-1};
             String signature=Objects.toString(input.get("partSignature"),"");
             String body=Objects.toString(input.get("partBody"),"");
+            List<String> key=List.of(source,name,signature,body);
+            if(!key.equals(lastPartKey)){
+                locatePart(source,name,signature,body);
+                lastPartKey=key;
+            }
+            if(partFrom>=0&&partTo>=partFrom)
+                return new String[]{source.substring(0,partFrom)+text+source.substring(partTo),String.valueOf(partFrom)};
+        }
+        if (Pattern.compile("(?m)^\\s*(?:public\\s+)?(?:class|interface|enum|record)\\s+").matcher(text).find())
+            return new String[]{text,"0"};
+        StringBuilder imports = new StringBuilder();
+        Matcher packageLine=Pattern.compile("(?m)^\\s*package\\s+[^;]+;").matcher(source);
+        if(packageLine.find())imports.append(packageLine.group()).append('\n');
+        Matcher matcher = Pattern.compile("(?m)^\\s*import\\s+[^;]+;").matcher(source);
+        while (matcher.find()) imports.append(matcher.group()).append('\n');
+        String before = imports + "\nclass __LucanetScript { void __edit() throws Exception {\n";
+        return new String[]{before+text+"\n}}",String.valueOf(before.length())};
+    }
+
+    private void locatePart(String source,String name,String signature,String body)throws IOException {
+            Analysis original = analyze(source,false,d->{},false);
+            long[] range = {-1,-1};int[] best={-1};
+            String enclosingName=simpleName(sourceName(source));
+            String normalizedSignature=signature.replaceAll("\\s+","");
             new TreePathScanner<Void,Void>() {
                 @Override public Void visitMethod(MethodTree node, Void unused) {
-                    boolean constructor=node.getName().contentEquals("<init>") && simpleName(sourceName(source)).equals(name);
+                    boolean constructor=node.getName().contentEquals("<init>") && enclosingName.equals(name);
                     if ((node.getName().contentEquals(name)||constructor) && node.getBody() != null) {
                         long from=original.trees.getSourcePositions().getStartPosition(original.unit,node.getBody())+1;
                         long to=original.trees.getSourcePositions().getEndPosition(original.unit,node.getBody())-1;
                         if(from<1||to<from)return null;
                         String parameters=node.getParameters().stream().map(Object::toString).collect(java.util.stream.Collectors.joining(","));
                         String key=(name+"("+parameters+")").replaceAll("\\s+","");
-                        int score=signature.replaceAll("\\s+","").contains(key)?100:0;
+                        int score=normalizedSignature.contains(key)?100:0;
                         if(!body.isEmpty()&&source.substring((int)from,(int)to).contains(body))score+=50;
                         if(score>best[0]){range[0]=from;range[1]=to;best[0]=score;}
                     }
@@ -178,25 +236,17 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                     return super.visitVariable(node,unused);
                 }
             }.scan(original.unit,null);
-            if (range[0]>=0 && range[1]>=range[0])
-                return new String[]{source.substring(0,(int)range[0])+text+source.substring((int)range[1]),String.valueOf(range[0])};
-        }
-        if (Pattern.compile("(?m)^\\s*(?:public\\s+)?(?:class|interface|enum|record)\\s+").matcher(text).find())
-            return new String[]{text,"0"};
-        StringBuilder imports = new StringBuilder();
-        Matcher packageLine=Pattern.compile("(?m)^\\s*package\\s+[^;]+;").matcher(source);
-        if(packageLine.find())imports.append(packageLine.group()).append('\n');
-        Matcher matcher = Pattern.compile("(?m)^\\s*import\\s+[^;]+;").matcher(source);
-        while (matcher.find()) imports.append(matcher.group()).append('\n');
-        String before = imports + "\nclass __LucanetScript { void __edit() throws Exception {\n";
-        return new String[]{before+text+"\n}}",String.valueOf(before.length())};
+            partFrom=(int)range[0];partTo=(int)range[1];
     }
 
     private Analysis analyze(String source, boolean attribution) throws IOException {
+        return analyze(source,attribution,d->{},true);
+    }
+    private Analysis analyze(String source,boolean attribution,DiagnosticListener<JavaFileObject> diagnostics,boolean includeCompanions)throws IOException {
         String currentName=sourceName(source);
         List<JavaFileObject> units=new ArrayList<>();units.add(sourceFile(currentName,source));
-        for(Map.Entry<String,String> other:companionSources.entrySet())if(!other.getKey().equals(currentName))units.add(sourceFile(other.getKey(),other.getValue()));
-        JavacTask task = (JavacTask) compiler.getTask(new StringWriter(),files,d -> {},
+        if(includeCompanions)for(Map.Entry<String,String> other:companionSources.entrySet())if(!other.getKey().equals(currentName))units.add(sourceFile(other.getKey(),other.getValue()));
+        JavacTask task = (JavacTask) compiler.getTask(new StringWriter(),files,diagnostics,
                 Arrays.asList("-proc:none","-Xlint:none","-implicit:none"),null,units);
         CompilationUnitTree unit = task.parse().iterator().next();
         if (attribution) { try { task.analyze(); } catch (RuntimeException incomplete) { /* Partially typed code is expected. */ } }
@@ -208,9 +258,10 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         };
     }
     private static String sourceName(String source) {
-        Matcher type=Pattern.compile("\\b(?:class|interface|enum|record)\\s+([\\w$]+)").matcher(mask(source));
+        String lexical=mask(source);
+        Matcher type=TYPE_NAME.matcher(lexical);
         String name=type.find()?type.group(1):"__LucanetScript";
-        Matcher pkg=Pattern.compile("\\bpackage\\s+([\\w$.]+)\\s*;").matcher(mask(source));
+        Matcher pkg=PACKAGE_NAME.matcher(lexical);
         return pkg.find()?pkg.group(1)+"."+name:name;
     }
     private static final class Analysis {
@@ -526,6 +577,8 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         }
         // Explicit imports continue to disambiguate classes exposed by multiple wildcard packages.
         Set<String> packages=new LinkedHashSet<>();packages.add("java.lang");
+        String currentPackage=a.unit.getPackageName()==null?"":a.unit.getPackageName().toString();
+        packages.add(currentPackage);
         for(String name:next)if(name.endsWith(".*")&&!name.startsWith("static "))packages.add(name.substring(0,name.length()-2));
         Map<String,String> referenced=new LinkedHashMap<>();
         for(String name:names)if(!name.endsWith(".*")&&!name.startsWith("static "))referenced.put(simpleName(name),name);
@@ -533,12 +586,12 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             Element e=a.trees.getElement(getCurrentPath());if(e instanceof TypeElement)referenced.put(n.getName().toString(),((TypeElement)e).getQualifiedName().toString());return super.visitIdentifier(n,u);
         }}.scan(a.unit,null);
         for(Map.Entry<String,String> entry:referenced.entrySet()) {
-            Set<String> candidates=new HashSet<>();for(String pkg:packages){TypeElement t=a.elements.getTypeElement(pkg+"."+entry.getKey());if(publicType(t))candidates.add(t.getQualifiedName().toString());}
+            Set<String> candidates=new HashSet<>();for(String pkg:packages){TypeElement t=a.elements.getTypeElement((pkg.isEmpty()?"":pkg+".")+entry.getKey());if(t!=null&&(publicType(t)||pkg.equals(currentPackage)))candidates.add(t.getQualifiedName().toString());}
             if(candidates.size()>1 && candidates.contains(entry.getValue()))next.add(entry.getValue());
         }
         List<Map<String,String>> values=new ArrayList<>();for(String name:next)values.add(Collections.singletonMap("import",name));return values;
     }
-    private static String mask(String text) {
+    static String mask(String text) {
         StringBuilder out=new StringBuilder(text);int state=0;
         for(int i=0;i<text.length();i++) {
             char c=text.charAt(i),next=i+1<text.length()?text.charAt(i+1):0;

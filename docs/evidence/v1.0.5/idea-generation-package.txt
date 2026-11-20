@@ -1,0 +1,14 @@
+Packaged: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\dist\lucanet-client-enhancement.zip
+Runtime package: 6 files inside lucanet-client-enhancement/. Extract all files and open lucanet-client-enhancement/enhancement.exe.
+PASS: GUI constructs all pages from runtime package; compiled updater verifies/extracts the minimal ZIP
+
+安装状态: installed；当前交付版本: True；JDK: 21.0.11+10
+Software Manager 运行中: False；Lucanet 进程数: 0；已确认加载的当前进程数: 0
+配置完整、启动器已加载、客户端退出已执行是不同状态；历史记录不能代替当前会话验证。
+Path                                                                                                                   
+----                                                                                                                   
+D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\runtime-package-3f5afd0eb655450b83f3b45fc1bf066b\假 Lucan...
+D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\runtime-package-3f5afd0eb655450b83f3b45fc1bf066b\假 Lucan...
+
+
+PASS: exact six-file runtime package, discovery/status, highest Lucanet JDK, installation/check/uninstall/reinstall and preserved third-party license (D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\runtime-package-3f5afd0eb655450b83f3b45fc1bf066b)

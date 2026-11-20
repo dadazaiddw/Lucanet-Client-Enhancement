@@ -150,7 +150,7 @@ internal static class WindowTests {
                 form.Font = new Font(form.Font.FontFamily, 9F * scale);
                 form.StartPosition = FormStartPosition.Manual; form.Location = new Point(-20000, -20000); form.ShowInTaskbar = false;
                 form.ResumeLayout(true); form.Show(); Application.DoEvents();
-                foreach(string page in new[]{"workspace","application","features"}) {
+                foreach(string page in new[]{"workspace","application","features","code"}) {
                     form.Navigate(page);form.PerformLayout();Application.DoEvents();
                     Check(form.Controls.Count==1,"one navigation shell");
                     Check(directory.Text==@"D:\Soft\LucaNet","navigation preserves selected installation");
@@ -160,7 +160,7 @@ internal static class WindowTests {
                     CheckNavigationBounds(form,page,tag);
                     if(page=="application")CheckRefreshBounds(form, scale, tag + " enabled");
                     if(page!="workspace")CheckSettingsContent(form,page,tag);
-                    if(page!="workspace")((Panel)All(form).Single(c=>c.Name==(page=="application"?"applicationSettings":"featureSettings"))).AutoScrollPosition=Point.Empty;
+                    if(page!="workspace")((Panel)All(form).Single(c=>c.Name==(page=="application"?"applicationSettings":page=="code"?"codeSettings":"featureSettings"))).AutoScrollPosition=Point.Empty;
                     using (var image = new Bitmap(form.Width, form.Height)) {
                         form.DrawToBitmap(image, new Rectangle(Point.Empty, image.Size));
                         image.Save(Path.Combine(work,page+"-"+tag+".png"));
@@ -229,7 +229,7 @@ internal static class WindowTests {
             form.Show(); Application.DoEvents();
             float dpi; using (var g = form.CreateGraphics()) { dpi = g.DpiX; }
             Console.WriteLine("Native DPI: " + dpi + "; client: " + form.ClientSize);
-            foreach (string page in new[] {"application","features","workspace","features","application"}) {
+            foreach (string page in new[] {"application","features","code","workspace","features","code","application"}) {
                 form.Navigate(page); form.PerformLayout(); Application.DoEvents();
                 CheckNavigationBounds(form,page,"native " + dpi);
                 if (page != "workspace") CheckSettingsContent(form,page,"native " + dpi);
@@ -250,7 +250,7 @@ internal static class WindowTests {
                 }
             }
             form.Size = form.MinimumSize; Application.DoEvents();
-            foreach(string page in new[]{"features","application"}) {
+            foreach(string page in new[]{"features","code","application"}) {
                 form.Navigate(page);form.PerformLayout();Application.DoEvents();
                 CheckNavigationBounds(form,page,"native minimum " + dpi);
                 CheckSettingsContent(form,page,"native minimum " + dpi);
@@ -283,14 +283,14 @@ internal static class WindowTests {
         Check(All(form).Single(c=>c.Name=="workspacePage").Visible==workspace,scenario+": workspace reachable");
         Check(All(form).Single(c=>c.Name=="applicationSettings").Visible==(page=="application"),scenario+": application reachable");
         Check(All(form).Single(c=>c.Name=="featureSettings").Visible==(page=="features"),scenario+": features reachable");
-        Check(All(form).Single(c=>c.Name=="pageTitle").Text==(workspace?"工作区":page=="application"?"应用":"功能"),scenario+": title follows selected tab");
+        Check(All(form).Single(c=>c.Name=="pageTitle").Text==(workspace?"工作区":page=="application"?"应用":page=="code"?"代码":"界面"),scenario+": title follows selected tab");
         Check(main.Left==(workspace?0:sidebar.Right) && main.Right==main.Parent.ClientSize.Width,scenario+": main content fills available width without sidebar gap");
         if(workspace) {
             Check(gear.Parent.ClientRectangle.Contains(gear.Bounds),scenario+": gear fully visible");
             Check(gear.Left>=All(form).Single(c=>c.Name=="pageTitle").Right,scenario+": gear clear of title");
             return;
         }
-        foreach(string name in new[]{"workspaceNavigation","applicationNavigation","featureNavigation","resetFeatureSettings","sidebarVersion"}) {
+        foreach(string name in new[]{"workspaceNavigation","applicationNavigation","featureNavigation","codeNavigation","resetFeatureSettings","sidebarVersion"}) {
             var control=All(sidebar).Single(c=>c.Name==name);
             Check(control.Visible && sidebar.ClientRectangle.Contains(control.Bounds),scenario+": sidebar item visible: "+name);
             var text=TextRenderer.MeasureText(control.Text,control.Font,Size.Empty,TextFormatFlags.SingleLine);
@@ -302,7 +302,7 @@ internal static class WindowTests {
     }
 
     private static void CheckSettingsContent(Form form, string page, string scenario) {
-        var panel=(Panel)All(form).Single(c=>c.Name==(page=="application"?"applicationSettings":"featureSettings"));
+        var panel=(Panel)All(form).Single(c=>c.Name==(page=="application"?"applicationSettings":page=="code"?"codeSettings":"featureSettings"));
         var content=panel.Controls.Cast<Control>().Single();
         // 允许内容超出滚动视口，但不能被中间卡片/单行父容器剪掉。
         foreach (Control c in All(panel).Where(c=>c.Visible && (c is Label || c is Button || c is AppMark || c is SettingToggle || c is NumericUpDown))) {
@@ -323,7 +323,7 @@ internal static class WindowTests {
         var blocks=content.Controls.Cast<Control>().Where(c=>c.Visible).OrderBy(c=>c.Top).ToArray();
         for(int i=1;i<blocks.Length;i++)Check(blocks[i].Top>=blocks[i-1].Bottom,scenario+": overlapping settings cards");
         if(page=="application") {
-            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.4",scenario+": application version fixed at 1.0.4");
+            var version=All(panel).Single(c=>c.Name=="appVersion");Check(version.Text=="v1.0.5",scenario+": application version fixed at 1.0.5");
             var icon=All(panel).Single(c=>c.Name=="applicationIcon");
             var identity=All(panel).Single(c=>c.Name=="applicationIdentity");
             Check(icon.Bottom<=identity.Height,scenario+": icon fully contained in identity card");

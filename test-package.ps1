@@ -6,8 +6,10 @@ Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archivePath=Join-Path $PSScriptRoot 'dist\lucanet-client-enhancement.zip'
 $expected=@('enhancement.exe','install.ps1','resolve-lucanet-jdk.ps1','tools/gui-core.ps1','tools/gui-service.ps1','dist/client-enhancement.jar')
+$expectedEntries=@($expected|ForEach-Object {'lucanet-client-enhancement/'+$_})
 $work=Join-Path $PSScriptRoot ('build\runtime-package-'+[Guid]::NewGuid().ToString('N'))
-$runtime=Join-Path $work '仅运行包 中文 空格'
+$extractionRoot=Join-Path $work '仅运行包 中文 空格'
+$runtime=Join-Path $extractionRoot 'lucanet-client-enhancement'
 New-Item -ItemType Directory -Path $work -Force|Out-Null
 function Assert-Package($Value,[string]$Message){if(-not $Value){throw "Runtime package test failed: $Message"}}
 function Get-PackageHash([string]$Path){
@@ -18,10 +20,11 @@ function Get-PackageHash([string]$Path){
 $zip=[IO.Compression.ZipFile]::OpenRead($archivePath)
 try{
     $names=@($zip.Entries|ForEach-Object FullName)
-    Assert-Package ($names.Count -eq 6 -and @(Compare-Object ($expected|Sort-Object) ($names|Sort-Object)).Count -eq 0) 'ZIP must contain exactly the six runtime dependencies'
+    Assert-Package ($names.Count -eq 6 -and @(Compare-Object ($expectedEntries|Sort-Object) ($names|Sort-Object)).Count -eq 0) 'ZIP must contain exactly six runtime dependencies inside lucanet-client-enhancement/'
     foreach($entry in $zip.Entries){Assert-Package ($entry.Length -gt 0) ('empty entry: '+$entry.FullName)}
 }finally{$zip.Dispose()}
-[IO.Compression.ZipFile]::ExtractToDirectory($archivePath,$runtime)
+[IO.Compression.ZipFile]::ExtractToDirectory($archivePath,$extractionRoot)
+Assert-Package (@(Get-ChildItem -LiteralPath $extractionRoot -Force).Count -eq 1) 'extraction creates a single top-level folder'
 foreach($name in $expected){
     $source=if($name -eq 'dist/client-enhancement.jar'){Join-Path (Join-Path $PSScriptRoot 'dist') $JarName}else{Join-Path $PSScriptRoot $name}
     Assert-Package ((Get-PackageHash (Join-Path $runtime $name)) -eq (Get-PackageHash $source)) ('source parity: '+$name)
@@ -34,6 +37,9 @@ try{
     }
     foreach($icon in @('class','interface','field','method','variable','parameter','template','staticMark','finalMark')) {
         Assert-Package ($null -ne $jar.GetEntry('cn/lucanet/enhancement/exit/idea-icons/'+$icon+'.svg')) ('official icon bundled: '+$icon)
+    }
+    foreach($size in @(16,32)) {
+        Assert-Package ($null -ne $jar.GetEntry("cn/lucanet/enhancement/exit/lucanet-$size.png")) ("Lucanet window icon bundled: $size px")
     }
 }finally{$jar.Dispose()}
 
@@ -61,13 +67,14 @@ class RuntimePackageProbe {
                 var handle=form.Handle;
                 if(form.Text!="Lucanet Client Enhancement")throw new Exception("GUI title mismatch");
                 var navigate=formType.GetMethod("Navigate",instance);
-                foreach(string page in new[]{"workspace","application","features","workspace"}){
+                foreach(string page in new[]{"workspace","application","features","code","workspace"}){
                     navigate.Invoke(form,new object[]{page});form.PerformLayout();
                 }
                 form.Close();
             }
             var verify=asm.GetType("GitHubUpdateService").GetMethod("VerifyAndExtract",BindingFlags.NonPublic|BindingFlags.Static);
             string updated=(string)verify.Invoke(null,new object[]{args[2],args[3],args[4]});
+            if(updated!=Path.Combine(args[4],"lucanet-client-enhancement") || !File.Exists(Path.Combine(updated,"enhancement.exe")))throw new Exception("Updater did not return the actual application folder");
             if(Directory.GetFiles(updated,"*",SearchOption.AllDirectories).Length!=6)throw new Exception("Updater expected six runtime files");
             Console.WriteLine("PASS: GUI constructs all pages from runtime package; compiled updater verifies/extracts the minimal ZIP");
             return 0;

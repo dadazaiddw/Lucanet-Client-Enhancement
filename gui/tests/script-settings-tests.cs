@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -20,8 +20,14 @@ internal static class ScriptSettingsTests {
             var doubleClick=(CheckBox)form.Controls.Find("scriptDoubleClick",true).Single();
             var sceneFrame=(CheckBox)form.Controls.Find("nativeSceneDialogFrame",true).Single();
             var editor=(CheckBox)form.Controls.Find("javaEditorAssist",true).Single();
+            var types=(CheckBox)form.Controls.Find("customJavaTypes",true).Single();
+            var code=form.Controls.Find("codeSettings",true).Single();
+            var ui=form.Controls.Find("featureSettings",true).Single();
+            Check(code.Contains(editor)&&code.Contains(types)&&!ui.Contains(editor),"code features live only on Code page");
+            Check(types.Checked&&store.Features.LoadCustomJavaTypes(),"custom types default enabled");
+            types.Checked=false;Check(!store.Features.LoadCustomJavaTypes(),"custom types persist immediately");
             var font=(NumericUpDown)form.Controls.Find("javaCompletionFontSize",true).Single();
-            Check(font.Value==18 && store.Features.LoadJavaCompletionFontSize()==18,"lookup font default 18");
+            Check(font.Value==20 && store.Features.LoadJavaCompletionFontSize()==20&&font.AccessibleName=="字号","code font label and default 20");
             Check(form.Controls.Find("javaEditorShortcutHint",true).Length==0,"shortcut description removed");
             font.Value=24;Check(new FeatureSettingsStore(features).LoadJavaCompletionFontSize()==24,"lookup font saved and reloaded immediately");
             Check(editor.Checked && store.Features.LoadJavaEditorAssist(),"Java editor default enabled");
@@ -55,11 +61,16 @@ internal static class ScriptSettingsTests {
             Check(doubleClick.Checked && store.Features.LoadScriptDoubleClick(),"restore defaults enables double-click");
             Check(sceneFrame.Checked && store.Features.LoadNativeSceneDialogFrame(),"restore defaults enables scene frame");
             Check(editor.Checked && store.Features.LoadJavaEditorAssist(),"restore defaults enables Java editor");
-            Check(font.Value==18&&store.Features.LoadJavaCompletionFontSize()==18,"restore default font");
+            Check(font.Value==20&&store.Features.LoadJavaCompletionFontSize()==20,"restore default font");
+            Check(types.Checked&&store.Features.LoadCustomJavaTypes(),"restore defaults enables custom types");
             using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
-                font.Value=26;Check(font.Value==18,"failed font save restores displayed value");
+                types.Checked=false;Check(types.Checked,"failed custom types save restores toggle");
             }
-            Check(messages==1&&store.Features.LoadJavaCompletionFontSize()==18,"failed font save preserves configuration");messages=0;
+            Check(messages==1&&store.Features.LoadCustomJavaTypes(),"failed types save preserves configuration");messages=0;
+            using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
+                font.Value=26;Check(font.Value==20,"failed font save restores displayed value");
+            }
+            Check(messages==1&&store.Features.LoadJavaCompletionFontSize()==20,"failed font save preserves configuration");messages=0;
             using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
                 sceneFrame.Checked=false;Check(sceneFrame.Checked,"failed save restores the displayed scene setting");
             }
@@ -77,7 +88,7 @@ internal static class ScriptSettingsTests {
         File.WriteAllText(features,"hideScriptStart=true\nscriptRunShortcut=bad\n");
         Check(!store.Features.LoadScript().HideStart && store.Features.LoadScript().Shortcut=="ALT+R","invalid config keeps button accessible");
         foreach(string invalid in new[]{"0","31","bad"}) {
-            File.WriteAllText(features,"javaCompletionFontSize="+invalid+"\n");Check(store.Features.LoadJavaCompletionFontSize()==18,"invalid font falls back to 18");
+            File.WriteAllText(features,"javaCompletionFontSize="+invalid+"\n");Check(store.Features.LoadJavaCompletionFontSize()==20,"invalid font falls back to 20");
         }
         Console.WriteLine("PASS: script hide/defaults/key capture, live persistence, safe validation and preservation of other feature settings");
     }

@@ -24,6 +24,10 @@ $archive = Join-Path $testRoot 'archive'
 if ($LASTEXITCODE -ne 0) { throw 'Archive behavior tests failed.' }
 & $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaIntelligenceTest
 if ($LASTEXITCODE -ne 0) { throw 'Java semantic analysis tests failed.' }
+& $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaMemberGenerationTest (Join-Path $testRoot 'generated beans')
+if ($LASTEXITCODE -ne 0) { throw 'Java method generation tests failed.' }
+& $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.CustomJavaSourceTest
+if ($LASTEXITCODE -ne 0) { throw 'Custom Java source tests failed.' }
 & $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaCompletionPopupTest (Join-Path $testRoot 'java-icons.png')
 if ($LASTEXITCODE -ne 0) { throw 'Java completion icon/font tests failed.' }
 & $java '-Djava.awt.headless=true' "-Dlucanet.enhancement.features=$testRoot\editor-features.properties" -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaEditorAssistTest

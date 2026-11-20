@@ -25,6 +25,10 @@ public final class JavaEditorRealProbe {
             edt(()->{build();return null;});
             edt(()->{invoke(controller,"scan",Component.class,root);original=text.getInputMap().getParent();return null;});
             binding=edt(()->{Map<?,?> bindings=(Map<?,?>)field(controller,"bindings");check(bindings.size()==1,"only source editor text is enhanced");return bindings.values().iterator().next();});
+            if(Boolean.getBoolean("lucanet.probe.completionLatency")) {
+                verifyCompletionLatency(Path.of(args[0]));
+                return;
+            }
             edt(()->{text.setText("String text = \"hello\";\ntext.sub");text.setCaretPosition(text.getDocument().getLength());invoke(binding,"request",new Class<?>[]{String.class,boolean.class},"complete",true);return null;});
             await(()->hasSubstring());
             edt(()->{ListModel<?> m=model();for(int i=0;i<m.getSize();i++)if(String.valueOf(m.getElementAt(i)).contains("substring(int")){((JList<?>)field(binding,"list")).setSelectedIndex(i);break;}invoke(binding,"accept");check(text.getText().contains("text.substring()"),"completion inserts native document");return null;});
@@ -80,7 +84,32 @@ public final class JavaEditorRealProbe {
             verifySelectedSignature(evidence);
             verifyAutomaticArguments(evidence);
             System.out.println("PASS: actual Lucanet widget, automatic argument completion after parameter hints, Ctrl+P, generics/alignment, native imports, source/Class snapshots, postfix undo and live settings");
-        }finally{edt(()->{if(controller instanceof AutoCloseable)((AutoCloseable)controller).close();if(frame!=null)frame.dispose();return null;});}
+        }finally{edt(()->{if(controller instanceof AutoCloseable)((AutoCloseable)controller).close();Object types=UIManager.get("cn.lucanet.enhancement.customJavaTypes.v1");if(types instanceof AutoCloseable)((AutoCloseable)types).close();if(frame!=null)frame.dispose();return null;});}
+    }
+    static void verifyCompletionLatency(Path evidence)throws Exception {
+        KeyboardFocusManager previous=KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        edt(()->{KeyboardFocusManager.setCurrentKeyboardFocusManager(new DefaultKeyboardFocusManager(){@Override public Component getFocusOwner(){return text;}});return null;});
+        try {
+            long[] samples=new long[20];long cold=0;
+            for(int i=-5;i<samples.length;i++) {
+                long start=edt(()->{
+                    text.setText("String name = \"hello\"; name");text.setCaretPosition(text.getDocument().getLength());
+                    JPopupMenu popup=(JPopupMenu)field(binding,"popup");popup.setVisible(false);
+                    long at=System.nanoTime();text.replaceSelection(".sub");return at;
+                });
+                long elapsed=0;
+                while(elapsed==0&&System.nanoTime()-start<TimeUnit.SECONDS.toNanos(20)) {
+                    elapsed=edt(()->((JPopupMenu)field(binding,"popup")).isVisible()&&hasSubstring()?System.nanoTime()-start:0L);
+                    if(elapsed==0)Thread.sleep(5);
+                }
+                check(elapsed>0,"typing opens completion popup");
+                if(i==-5)cold=elapsed;
+                if(i>=0)samples[i]=elapsed;
+            }
+            Arrays.sort(samples);
+            String report=String.format(Locale.ROOT,"Typing to member popup: cold %.1f ms; warm median %.1f ms, p95 %.1f ms (n=%d)%n",cold/1e6,(samples[9]+samples[10])/2e6,samples[18]/1e6,samples.length);
+            Files.writeString(evidence.resolveSibling("typing-"+evidence.getFileName()+".txt"),report);System.out.print(report);
+        }finally{edt(()->{invoke(binding,"dismiss");KeyboardFocusManager.setCurrentKeyboardFocusManager(previous);return null;});}
     }
     static void verifySelectedSignature(Path evidence)throws Exception {
         Path features=Path.of(System.getProperty("lucanet.enhancement.features"));Files.writeString(features,"javaEditorAssist=true\njavaCompletionFontSize=30\n");
@@ -282,7 +311,7 @@ public final class JavaEditorRealProbe {
         Class<?> node=Class.forName("com.lucanet.common.dom.base.node.AbstractDOMNode");
         Object script=allocate.invoke(unsafe,Class.forName("com.lucanet.common.dom.script.elements.Script"));
         Object classRoot=allocate.invoke(unsafe,Class.forName("com.lucanet.common.dom.script.elements.classes.ClassFolderRootElement"));
-        Object custom=allocate.invoke(unsafe,Class.forName("com.lucanet.common.dom.script.elements.classes.ClassElement"));
+        Object custom=Class.forName("com.lucanet.common.dom.script.elements.classes.ClassElement").getConstructor().newInstance();
         Object customCode=allocate.invoke(unsafe,javaCode);String source="package com.lucanet.common.dom.script.rt; public class StringUtil {private StringUtil(){} public static boolean isEmpty(String text){return false;}}";
         set(customCode,"h","StringUtil");set(customCode,"k",source);
         for(Field f:custom.getClass().getDeclaredFields())if(f.getType()==javaCode){f.setAccessible(true);f.set(custom,customCode);}
@@ -313,6 +342,25 @@ public final class JavaEditorRealProbe {
         children.set(classRoot,new ArrayList<>());
         @SuppressWarnings("unchecked") Map<String,Object> removed=(Map<String,Object>)invoke(adapter,"request",new Class<?>[]{JTextComponent.class,String.class},text,"complete");
         check(((Map<?,?>)removed.get("sources")).isEmpty(),"deleted Class disappears on next snapshot");
+        verifyLibrary(adapter,script);
+    }
+    @SuppressWarnings("unchecked") static void verifyLibrary(Object adapter,Object script)throws Exception {
+        Path work=Path.of(System.getProperty("lucanet.enhancement.features")).getParent();
+        JavaLibraryProbe library=JavaLibraryProbe.attach(script,work);
+        if(library==null)return;
+        for(String fragment:List.of("EasyExc","com.alibaba.excel.EasyExcel.fixtureR")){
+            text.setText(fragment);text.setCaretPosition(fragment.length());
+            Map<String,Object> request=(Map<String,Object>)invoke(adapter,"request",new Class<?>[]{JTextComponent.class,String.class},text,"complete");
+            List<Map<String,String>> candidates=(List<Map<String,String>>)invoke(controller,"analyze",Map.class,request);
+            String expected=fragment.contains(".")?"fixtureRead":"EasyExcel";
+            check(candidates.stream().anyMatch(row->expected.equals(row.get("name"))),"script completion sees additional library symbol "+expected);
+        }
+        library.detachLibrary();
+        text.setText("EasyExc");text.setCaretPosition(7);
+        Map<String,Object> request=(Map<String,Object>)invoke(adapter,"request",new Class<?>[]{JTextComponent.class,String.class},text,"complete");
+        List<Map<String,String>> candidates=(List<Map<String,String>>)invoke(controller,"analyze",Map.class,request);
+        check(candidates.stream().noneMatch(row->"EasyExcel".equals(row.get("name"))),"removed Script library does not remain in completion index");
+        System.out.println("PASS: native script adapter indexes only the active Script's extra JAR and refreshes after removal");
     }
     static void addNativeImport(String name)throws Exception {
         Object part=nativeImport.getConstructor(nativeEditability,String.class).newInstance(nativeEditability.getField("EDITABLE").get(null),name);nativeAdd.invoke(nativeImports,part,null);

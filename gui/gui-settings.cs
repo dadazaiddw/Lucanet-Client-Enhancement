@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 using System.Web.Script.Serialization;
@@ -80,6 +80,16 @@ internal sealed class FeatureSettingsStore {
     internal void SaveNativeSceneDialogFrame(bool enabled) {
         SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"nativeSceneDialogFrame",enabled ? "true" : "false"}});
     }
+    internal bool LoadCustomJavaTypes() {
+        if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
+            string line=source.Trim();
+            if(line.StartsWith("customJavaTypes=",StringComparison.Ordinal))return line.Substring("customJavaTypes=".Length).Trim().Equals("true",StringComparison.OrdinalIgnoreCase);
+        }
+        return true;
+    }
+    internal void SaveCustomJavaTypes(bool enabled) {
+        SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"customJavaTypes",enabled ? "true" : "false"}});
+    }
     internal bool LoadJavaEditorAssist() {
         if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
             string line=source.Trim();
@@ -90,13 +100,14 @@ internal sealed class FeatureSettingsStore {
     internal void SaveJavaEditorAssist(bool enabled) {
         SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"javaEditorAssist",enabled ? "true" : "false"}});
     }
+    internal const int DefaultJavaFontSize=20;
     internal int LoadJavaCompletionFontSize() {
         if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
             string line=source.Trim();int size;
             if(line.StartsWith("javaCompletionFontSize=",StringComparison.Ordinal))
-                return int.TryParse(line.Substring("javaCompletionFontSize=".Length).Trim(),out size)&&size>=12&&size<=30?size:18;
+                return int.TryParse(line.Substring("javaCompletionFontSize=".Length).Trim(),out size)&&size>=12&&size<=30?size:DefaultJavaFontSize;
         }
-        return 18;
+        return DefaultJavaFontSize;
     }
     internal void SaveJavaCompletionFontSize(int size) {
         if(size<12||size>30)throw new ArgumentOutOfRangeException("javaCompletionFontSize");

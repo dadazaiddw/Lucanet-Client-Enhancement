@@ -1,0 +1,23 @@
+安装状态: not-installed；当前交付版本: False；JDK: 
+Software Manager 运行中: False；Lucanet 进程数: 0；已确认加载的当前进程数: 0
+Lucanet 的 .jdk 中没有可用的完整 JDK（至少 Java 11）。
+配置完整、启动器已加载、客户端退出已执行是不同状态；历史记录不能代替当前会话验证。
+Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-43de630a1fbf4d90a39dc797ca846c5a\.client-enhancement\backups\20261120-190155-9d6e4f5d012747bea551c0173c3aa4c5
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-43de630a1fbf4d90a39dc797ca846c5a\.client-enhancement\backups\20261120-190155-8d1362d7d20e41bc99ad93e7c067abdb
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-43de630a1fbf4d90a39dc797ca846c5a\.client-enhancement\backups\20261120-190155-75a5a7573f7f4da3888fbd79bb38b668
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-43de630a1fbf4d90a39dc797ca846c5a\.client-enhancement\backups\20261120-190156-f4a5d587657c4b51be7694e9714124ee
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-43de630a1fbf4d90a39dc797ca846c5a\.client-enhancement\backups\20261120-190156-b456a569e1924c4a8216455798d8fda5
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-43de630a1fbf4d90a39dc797ca846c5a\.client-enhancement\backups\20261120-190156-9724f904110e48d6862f9aea941a6298
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+PASS: installation, idempotent reinstall, uninstall, backups, unrelated parameters and unsupported-format preflight

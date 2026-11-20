@@ -1,0 +1,3 @@
+Lucanet JDK: 21.0.11+10-LTS [D:\Soft\LucaNet\.jdk\LucaNetJDK-21.0.11+10]
+Built: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\dist\client-enhancement.jar
+Built GUI: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\enhancement.exe

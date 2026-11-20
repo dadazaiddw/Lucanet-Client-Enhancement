@@ -39,7 +39,7 @@ final class JavaCompletionPopup extends JPopupMenu {
         list.addListSelectionListener(e->{if(!e.getValueIsAdjusting())scheduleExpansion();});
         scroll.getViewport().addChangeListener(e->scheduleExpansion());
         footer.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createMatteBorder(1,0,0,0,new Color(224,227,234)),BorderFactory.createEmptyBorder(8,10,3,10)));
-        footer.setForeground(MUTED);add(scroll,BorderLayout.CENTER);add(footer,BorderLayout.SOUTH);fontSize(18);
+        footer.setForeground(MUTED);add(scroll,BorderLayout.CENTER);add(footer,BorderLayout.SOUTH);fontSize(FeatureSettings.DEFAULT_JAVA_FONT_SIZE);
     }
     @Override public void setVisible(boolean visible){if(!visible)hideExpansion();super.setVisible(visible);if(visible)scheduleExpansion();}
     @Override public void removeNotify(){hideExpansion();super.removeNotify();}

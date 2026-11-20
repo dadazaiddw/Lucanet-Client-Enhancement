@@ -54,8 +54,13 @@ final class FeatureSettings {
         try { return Boolean.parseBoolean(load().getProperty("javaEditorAssist", "true").trim()); }
         catch (Exception failure) { return false; }
     }
+    static boolean customJavaTypes() {
+        try { return Boolean.parseBoolean(load().getProperty("customJavaTypes", "true").trim()); }
+        catch(Exception unavailable){return false;}
+    }
+    static final int DEFAULT_JAVA_FONT_SIZE=20;
     static int javaCompletionFontSize() {
-        try { int value=Integer.parseInt(load().getProperty("javaCompletionFontSize","18").trim());return value>=12&&value<=30?value:18; }
-        catch(Exception failure){return 18;}
+        try { int value=Integer.parseInt(load().getProperty("javaCompletionFontSize","").trim());return value>=12&&value<=30?value:DEFAULT_JAVA_FONT_SIZE; }
+        catch(Exception failure){return DEFAULT_JAVA_FONT_SIZE;}
     }
 }

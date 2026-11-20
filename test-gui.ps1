@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'tools\gui-core.ps1')
@@ -24,8 +24,19 @@ function Assert-Gui($condition,[string]$description){if(-not $condition){throw "
 $service=Join-Path $PSScriptRoot 'tools\gui-service.ps1'
 $ps=Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 function Call-Service([string]$action){
-    $json=& $ps -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $service -Action $action -LucanetHome $fake
-    return (($json -join "`n")|ConvertFrom-Json)
+    # Match the GUI's explicit UTF-8 transport instead of the parent console code page.
+    $start=New-Object Diagnostics.ProcessStartInfo
+    $start.FileName=$ps
+    $start.Arguments='-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "'+$service+'" -Action '+$action+' -LucanetHome "'+$fake+'"'
+    $start.UseShellExecute=$false;$start.CreateNoWindow=$true
+    $start.RedirectStandardOutput=$true;$start.RedirectStandardError=$true
+    $start.StandardOutputEncoding=[Text.Encoding]::UTF8;$start.StandardErrorEncoding=[Text.Encoding]::UTF8
+    $child=[Diagnostics.Process]::Start($start)
+    try {
+        $stdout=$child.StandardOutput.ReadToEndAsync();$stderr=$child.StandardError.ReadToEndAsync()
+        $child.WaitForExit()
+        return ($stdout.Result|ConvertFrom-Json)
+    }finally{$child.Dispose()}
 }
 Assert-Gui ((Resolve-SoftwareManagerRoot $fakeExe) -eq $fake) 'manual EXE path resolves to installation'
 Assert-Gui (@(Find-SoftwareManagerInstallations -AdditionalCandidates @($fake,$fakeExe)|Where-Object Root -eq $fake).Count -eq 1) 'discovery de-duplicates installation'
@@ -40,7 +51,7 @@ $process=Start-Process -FilePath $fakeExe -WindowStyle Hidden -PassThru
 try{
     $status=Get-ClientEnhancementStatus $fake -LogDirectory (Join-Path $work 'logs')
     Assert-Gui ($status.ManagerRunning -and -not $status.CanModify) 'Manager running state blocks modifications'
-    $result=Call-Service 'uninstall';Assert-Gui (-not $result.Ok -and $result.Message -match '正在运行') 'GUI refuses uninstall while running'
+    $result=Call-Service 'uninstall';Assert-Gui (-not $result.Ok -and $result.Message -match '正在运行') ('GUI refuses uninstall while running: '+($result|ConvertTo-Json -Compress))
     $liveLog=Join-Path $logs ('client-exit-'+$process.Id+'.log')
     $stamp=[DateTime]::UtcNow.ToString('o')
     [IO.File]::WriteAllText($liveLog,"$stamp [INFO] [pid=$($process.Id)] AGENT_ACTIVE: jar=$agent`n$stamp [INFO] [pid=$($process.Id)] TRANSFORMED: ln/application/Application`n")
@@ -92,7 +103,7 @@ $versions=Join-Path $fake '.client-enhancement\versions';New-Item -ItemType Dire
 $digest=(Get-ClientEnhancementHash $agent).ToLowerInvariant()
 Copy-Item -LiteralPath $agent -Destination (Join-Path $versions ($digest+'.jar'))
 $pointer=Join-Path $fake '.client-enhancement\active.properties'
-[IO.File]::WriteAllText($pointer,"sha256=$digest`nversion=1.0.4`n")
+[IO.File]::WriteAllText($pointer,"sha256=$digest`nversion=1.0.5`n")
 $status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
 Assert-Gui ($status.Current -and $status.State -eq 'installed') 'active hot-update version is current'
 [IO.File]::WriteAllText($pointer,'sha256=invalid')
