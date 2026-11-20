@@ -1,0 +1,2 @@
+PASS: all-file recursive archive including unknown names, hidden, empty and binary files; content, relative paths, collisions, failures and directory boundary
+PASS: actual Windows junction skipped; destination file preserved.

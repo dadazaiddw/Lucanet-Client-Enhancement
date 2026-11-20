@@ -1,0 +1,1 @@
+PASS: discovery, manual selection, Lucanet JDK, JSON service install/uninstall/reinstall, running protection, evidence separation and repair (D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\gui-tests-a1d39d737dd84d41b3996baeb563e676)

@@ -83,8 +83,22 @@ public final class JavaEditorRealProbe {
             capture(evidence.resolveSibling("long-signature-"+evidence.getFileName()));
             verifySelectedSignature(evidence);
             verifyAutomaticArguments(evidence);
+            verifyLineEndings();
             System.out.println("PASS: actual Lucanet widget, automatic argument completion after parameter hints, Ctrl+P, generics/alignment, native imports, source/Class snapshots, postfix undo and live settings");
         }finally{edt(()->{if(controller instanceof AutoCloseable)((AutoCloseable)controller).close();Object types=UIManager.get("cn.lucanet.enhancement.customJavaTypes.v1");if(types instanceof AutoCloseable)((AutoCloseable)types).close();if(frame!=null)frame.dispose();return null;});}
+    }
+    static void verifyLineEndings()throws Exception {
+        edt(()->{
+            invoke(binding,"dismiss");String original="int first = 1;\r\n    int last = 2;";
+            text.setText(original);text.setCaretPosition(0);key("control shift J");
+            check(text.getText().equals("int first = 1; int last = 2;"),"native CRLF join removes both separator characters");
+            key("control Z");check(text.getText().equals(original),"native undo restores CRLF source exactly");
+            text.setCaretPosition(text.getDocument().getLength());key("alt shift UP");
+            check(text.getText().equals("    int last = 2;\r\nint first = 1;"),"native move keeps CRLF for final line");
+            key("control Z");check(text.getText().equals(original),"native move undo restores original source");
+            return null;
+        });
+        System.out.println("PASS: native CRLF join/move and exact single-step undo");
     }
     static void verifyCompletionLatency(Path evidence)throws Exception {
         KeyboardFocusManager previous=KeyboardFocusManager.getCurrentKeyboardFocusManager();

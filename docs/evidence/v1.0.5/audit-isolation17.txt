@@ -1,0 +1,2 @@
+PASS: service-discovered processor executes in native javac control, never during editor completion/diagnostics/override; annotation library removal refreshes index
+PASS: IDEA editing actions, context isolation, live enable/disable, read-only, selection/document preservation and teardown

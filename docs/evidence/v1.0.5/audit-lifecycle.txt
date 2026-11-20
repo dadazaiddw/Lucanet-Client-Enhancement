@@ -1,0 +1,11 @@
+Lucanet JDK: 21.0.11+10-LTS [D:\Soft\LucaNet\.jdk\LucaNetJDK-21.0.11+10]
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real Lucanet Application.stop transformed; built-in archive precedes prepareStop and survives restart
+Application library: file:/C:/ProgramData/LucaNet/Youniverse/.resource/ln.application-17.15.3-lnsuite-10010a9a.jar
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real Lucanet Application.stop transformed; built-in archive precedes prepareStop and survives restart
+Application library: file:/C:/ProgramData/LucaNet/Youniverse/.resource/ln.application-17.15.3-lnsuite-10010a9a.jar
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real Lucanet Application.stop transformed; built-in archive precedes prepareStop and survives restart
+Application library: file:/C:/ProgramData/LucaNet/Youniverse/.resource/ln.application-17.15.3-lnsuite-10010a9a.jar
+Real-library test passed. Evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\real-lifecycle-f7125991d6a74ee3ab9587a053696af9

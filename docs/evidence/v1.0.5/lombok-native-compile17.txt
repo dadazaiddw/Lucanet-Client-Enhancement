@@ -1,0 +1,2 @@
+PASS: native module compiler, Lombok bytecode/native loader execution, unchanged ordinary bytecode/diagnostics, proc:none and absent-hook fallback
+Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-cfe349ea26cc4402adb9ec9c00f7ec77

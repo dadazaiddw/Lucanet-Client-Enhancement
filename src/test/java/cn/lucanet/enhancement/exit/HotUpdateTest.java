@@ -32,9 +32,14 @@ public final class HotUpdateTest {
                 update(root,installed,source,ids,true);
             }
             for (Process p : processes) { ask(p,"navigate","NEW"); }
+            if (!previousBinary) for (Process p : processes) { ask(p,"hold","HELD"); }
             update(root,installed,changed,ids,true);
             if (!HotUpdateFiles.hash(HotUpdateFiles.active(installed)).equals(HotUpdateFiles.hash(changed))) { throw new AssertionError("Active disk version not updated"); }
             for (Process p : processes) { ask(p,"navigate","ORIGINAL"); }
+            if (!previousBinary) for (Process p : processes) {
+                ask(p,"release","OLD_CALL_COMPLETED");
+                ask(p,"collected","COLLECTED");
+            }
             List<String> restart = command(root);
             restart.addAll(List.of("-javaagent:"+installed,"-Djava.awt.headless=true","-Dlucanet.exit.logDir="+root.resolve("logs"),
                     "-Dlucanet.enhancement.features="+root.resolve("features.properties"),"-cp",Path.of(HotUpdateTest.class.getProtectionDomain().getCodeSource().getLocation().toURI()).toString(),HotUpdateTest.class.getName(),"child"));
@@ -53,7 +58,7 @@ public final class HotUpdateTest {
             if (!originalHash.equals(HotUpdateFiles.hash(HotUpdateFiles.active(installed)))) { throw new AssertionError("Active version not rolled back"); }
             for (Process p : processes) { ask(p,"navigate","NEW"); }
             update(root,installed,changed,Long.toString(ProcessHandle.current().pid()),false);
-            System.out.println("PASS: two running JVMs switch actual behavior without restarting; subsequent start uses active version; prepare/commit failures roll back; non-agent process rejected");
+            System.out.println("PASS: two running JVMs switch actual behavior without restarting; subsequent start uses active version; prepare/commit failures roll back; non-agent process rejected; retired loaders can be collected after old calls release them");
         } finally { for (Process p : processes) { if (p.isAlive()) { p.getOutputStream().write("exit\n".getBytes()); p.getOutputStream().flush(); if (!p.waitFor(5,java.util.concurrent.TimeUnit.SECONDS)) { p.destroyForcibly(); } } } }
     }
     private static List<String> command(Path root) {
@@ -67,14 +72,41 @@ public final class HotUpdateTest {
         if ((p.waitFor()==0)!=success) { throw new AssertionError(output); }
     }
     private static void child() throws Exception {
+        AgentModule held = null;
+        java.lang.ref.WeakReference<ClassLoader> retired = null;
         System.out.println("READY"); System.out.flush();
         try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in))) {
             for (String line; (line=input.readLine())!=null && !line.equals("exit");) {
+                if (line.equals("hold")) {
+                    java.lang.reflect.Field current = LiveBridge.class.getDeclaredField("current"); current.setAccessible(true);
+                    held = (AgentModule) current.get(null);
+                    retired = new java.lang.ref.WeakReference<>(held.getClass().getClassLoader());
+                    System.out.println("HELD"); System.out.flush(); continue;
+                }
+                if (line.equals("release")) {
+                    completeOldCall(held); held = null;
+                    System.out.println("OLD_CALL_COMPLETED"); System.out.flush(); continue;
+                }
+                if (line.equals("collected")) {
+                    for (int attempt=0;attempt<50&&retired.get()!=null;attempt++) { System.gc(); Thread.sleep(50); }
+                    if (retired.get()!=null) throw new AssertionError("Retired module loader is still strongly retained");
+                    System.out.println("COLLECTED"); System.out.flush(); continue;
+                }
                 int count=UIController.newWindows, original=UIController.originalNavigations;
                 NavigationTest.navigate("ln:goto/LNFC/db?oid=2466470");
                 System.out.println(UIController.newWindows>count?"NEW":UIController.originalNavigations>original?"ORIGINAL":"DROPPED"); System.out.flush();
             }
         }
+    }
+    private static void completeOldCall(AgentModule held) throws Exception {
+        // A retired module still in use must be able to lazily load classes/resources.
+        ClassLoader loader = held.getClass().getClassLoader();
+        if (loader.loadClass("cn.lucanet.enhancement.exit.JavaCompletionIcons").getClassLoader()!=loader)
+            throw new AssertionError("Old module lost its isolated loader");
+        try (InputStream resource=loader.getResourceAsStream("cn/lucanet/enhancement/exit/NativeBridge.class")) {
+            if (resource==null||resource.read()<0) throw new AssertionError("Old loader was closed too early");
+        }
+        if (!"".equals(held.invoke("augmentConfiguration",new Object[]{""}))) throw new AssertionError("Old call could not finish");
     }
     private static void ask(Process process,String line,String expected) throws Exception {
         process.getOutputStream().write((line+"\n").getBytes());process.getOutputStream().flush();reply(process,expected);

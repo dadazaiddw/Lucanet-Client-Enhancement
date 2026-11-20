@@ -24,7 +24,10 @@ public final class JavaEditorAssistTest {
             panel.text.setText("sout");panel.text.setCaretPosition(4);press("TAB");check(panel.text.getText().equals("System.out.println();")&&panel.text.getCaretPosition()==19,"template caret");
             panel.text.setText("if (true) {\nvalue();\n}");panel.text.setCaretPosition(0);press("control alt I");check(panel.text.getText().contains("\n    value();"),"indentation");
             check(!JavaEditing.codeAt("// comment",8)&&!JavaEditing.codeAt("\"hello",4)&&JavaEditing.codeAt("\"hello\";",8),"comment/string suppression");
+            check("complete".equals(JavaEditorAssist.automaticOperation("@",1,false)),"@ triggers annotation lookup");
+            check(JavaEditorAssist.automaticOperation("// @",4,false)==null&&JavaEditorAssist.automaticOperation("\"@",2,false)==null,"@ in comments or strings is ignored");
             String block="String value=\"\"\"\n  { text }\n\"\"\";";check(!JavaEditing.codeAt(block,22),"text block suppression");
+            verifyLineEndings();
             content="String pending = \"unsaved\";";panel.text.setText(content);panel.text.select(7,14);
         });
         Files.writeString(features,"javaEditorAssist=false\n");await(()->panel.text.getInputMap()==original);
@@ -32,6 +35,26 @@ public final class JavaEditorAssistTest {
         Files.writeString(features,"javaEditorAssist=true\n");await(()->panel.text.getInputMap()!=original);
         EventQueue.invokeAndWait(()->{panel.text.setEditable(false);check(panel.text.getInputMap()==original,"read-only restores original keys");panel.text.setEditable(true);check(panel.text.getInputMap()!=original,"editable resumes");controller.close();check(panel.text.getInputMap()==original,"hot replacement cleanup");});
         System.out.println("PASS: IDEA editing actions, context isolation, live enable/disable, read-only, selection/document preservation and teardown");
+    }
+    private static void verifyLineEndings(){
+        for(String newline:new String[]{"\n","\r\n"}) {
+            panel.text.setText("first"+newline+"last");panel.text.setCaretPosition(panel.text.getText().length());
+            press("control D");check(panel.text.getText().equals("first"+newline+"last"+newline+"last"),"duplicate final line preserves separator");
+            press("control Y");check(panel.text.getText().equals("first"+newline+"last"),"delete final line removes full separator");
+            press("alt shift UP");check(panel.text.getText().equals("last"+newline+"first"),"move final line up preserves separator");
+            press("alt shift DOWN");check(panel.text.getText().equals("first"+newline+"last"),"move line down preserves separator");
+            panel.text.setText("a();"+newline+"    b();");panel.text.setCaretPosition(0);
+            JavaEditing.join(panel.text);check(panel.text.getText().equals("a(); b();"),"join removes whole line separator");
+            panel.text.setText("if (true) {"+newline+"}");panel.text.setCaretPosition(4);
+            JavaEditing.newLine(panel.text);check(panel.text.getText().equals("if (true) {"+newline+"    "+newline+"}"),"new line preserves separator and indent");
+            panel.text.setText("class Demo {"+newline+""+newline+"void run() {"+newline+"sout"+newline+"}"+newline+"}");panel.text.setCaretPosition(0);
+            JavaEditing.indent(panel.text);
+            check(panel.text.getText().equals("class Demo {"+newline+"    "+newline+"    void run() {"+newline+"        sout"+newline+"    }"+newline+"}"),"indent preserves blank line separators");
+            panel.text.setText("class Demo {"+newline+"    fori"+newline+"}");panel.text.setCaretPosition(panel.text.getText().indexOf("fori")+4);
+            press("TAB");check(!panel.text.getText().replace(newline,"").contains("\r")&&!panel.text.getText().replace(newline,"").contains("\n"),"multiline template uses document separator");
+            panel.text.setText("// keep"+newline+"run();");panel.text.setCaretPosition(0);JavaEditing.join(panel.text);
+            check(panel.text.getText().equals("// keep"+newline+"run();"),"join never comments out the following statement");
+        }
     }
     private static void press(String stroke){Object key=panel.text.getInputMap().get(KeyStroke.getKeyStroke(stroke));Action action=panel.text.getActionMap().get(key);check(action!=null,"binding "+stroke);action.actionPerformed(new ActionEvent(panel.text,0,""));}
     private static void await(java.util.function.BooleanSupplier condition)throws Exception{long until=System.nanoTime()+3_000_000_000L;while(System.nanoTime()<until){boolean[] done={false};EventQueue.invokeAndWait(()->done[0]=condition.getAsBoolean());if(done[0])return;Thread.sleep(25);}throw new AssertionError("Live setting not applied");}

@@ -24,7 +24,7 @@ public final class JavaIntelligenceTest {
             check(service.apply(input).stream().anyMatch(v->v.get("name").equals("substring")),"native method signature retained");
             input=request("val|");input.put("part","execute");input.put("source","class Demo { String value; void execute() { } }");
             check(service.apply(input).stream().anyMatch(v->v.get("name").equals("value")),"native class members");
-            verifyContext();verifyParameters();verifyArgumentCompletion();verifyGenericPresentation();verifyPostfix();verifyConstructorAccess();verifyIconKinds();verifyImports();verifyTypeActions();
+            verifyContext();verifyParameters();verifyArgumentCompletion();verifyGenericPresentation();verifyPostfix();verifyConstructorAccess();verifyIconKinds();verifyImports();verifyTypeActions();verifyAnnotations();
             System.out.println("PASS: Java semantic completion, overloads, generic chains/parameters, scope, access control, imports and native class context");
         }
     }
@@ -32,6 +32,21 @@ public final class JavaIntelligenceTest {
         Map<String,Object> input=new HashMap<>();input.put("text",marked.replace("|",""));input.put("caret",marked.indexOf('|'));input.put("classpath","");return input;
     }
     static List<Map<String,String>> complete(String marked) {return engine.apply(request(marked));}
+    static void verifyAnnotations(){
+        List<Map<String,String>> rows=unitAction("@| public class Demo {}","complete");
+        check(!rows.isEmpty()&&rows.stream().allMatch(row->row.get("icon").equals("annotation")),"bare @ offers only annotations: "+rows);
+        check(rows.stream().anyMatch(row->row.get("name").equals("Deprecated")),"bare @ finds JDK annotations");
+        rows=unitAction("class Demo { @Over| public String toString(){return \"\";} }","complete");
+        Map<String,String> override=named(rows,"Override");check("Override".equals(override.get("unitReference"))&&override.get("imports").isEmpty(),"java.lang annotation needs no import");
+        rows=unitAction("@java.lang.Dep| class Demo {}","complete");
+        check(rows.size()==1&&rows.get(0).get("insert").equals("Deprecated")&&rows.get(0).get("import").isEmpty(),"qualified annotation preserves qualifier without redundant import");
+        rows=unitAction("@interface Tag {} @Ta| class Demo {}","complete");
+        check(rows.stream().anyMatch(row->row.get("name").equals("Tag")),"local annotation declaration");
+        Map<String,Object> custom=request("@Cus| class Demo {}");custom.put("compilationUnit",true);custom.put("sources",Map.of("Tag","package fixture; public @interface CustomTag {}"));
+        check(engine.apply(custom).stream().anyMatch(row->row.get("import").equals("fixture.CustomTag")),"companion source annotation");
+        check(unitAction("@SuppressWarnings(System.getPro|) class Demo {}","complete").stream().anyMatch(row->row.get("name").equals("getProperty")),"annotation argument keeps expression completion");
+        check(unitAction("class Demo { void f(){ Strin| value; } }","complete").stream().anyMatch(row->row.get("name").equals("String")),"ordinary type completion unaffected");
+    }
     static List<Map<String,String>> unitAction(String source,String operation) {
         Map<String,Object> input=request(source);input.put("compilationUnit",true);input.put("operation",operation);
         return engine.apply(input);

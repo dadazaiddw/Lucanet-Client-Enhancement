@@ -1,6 +1,7 @@
 package cn.lucanet.enhancement.exit;
 
 import java.lang.instrument.Instrumentation;
+import java.lang.ref.WeakReference;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
@@ -15,8 +16,9 @@ public final class AgentRuntime {
     private static Instrumentation instrumentation;
     private static String installedJar;
     private static AgentModule previous, prepared;
-    // 已进入的旧调用允许自然结束，不提前关闭其 loader。
-    private static final java.util.List<ClassLoader> loaders = new java.util.concurrent.CopyOnWriteArrayList<>();
+    // 登记不拥有加载器；活动模块、回滚引用及在途调用决定其生命周期。
+    // 不主动 close，旧调用仍可加载尚未使用的类和资源。
+    private static final java.util.List<WeakReference<ClassLoader>> loaders = new java.util.concurrent.CopyOnWriteArrayList<>();
 
     public static synchronized void start(Instrumentation inst, String jarPath) throws Exception {
         if (instrumentation != null) { return; }
@@ -48,7 +50,8 @@ public final class AgentRuntime {
         try {
             AgentModule module = (AgentModule) loader.loadClass("cn.lucanet.enhancement.exit.RuntimeModule")
                     .getConstructor(Instrumentation.class, String.class).newInstance(instrumentation, installedJar);
-            loaders.add(loader); return module;
+            loaders.removeIf(reference -> reference.get() == null);
+            loaders.add(new WeakReference<>(loader)); return module;
         } catch (Exception | LinkageError failure) { loader.close(); throw failure; }
     }
     static synchronized void prepare(Path candidate) throws Exception {
@@ -95,7 +98,11 @@ public final class AgentRuntime {
                 if (pkg.equals("ln.application") || pkg.equals("com.lucanet.lisa.ui")
                         || pkg.equals("com.lucanet.lisa.applicationframe") || pkg.equals("com.lucanet.lisa.useraction")) {
                     Set<Module> targets = new java.util.HashSet<>(); targets.add(bridge);
-                    for (ClassLoader loader : loaders) { targets.add(loader.getUnnamedModule()); }
+                    loaders.removeIf(reference -> reference.get() == null);
+                    for (WeakReference<ClassLoader> reference : loaders) {
+                        ClassLoader loader = reference.get();
+                        if (loader != null) { targets.add(loader.getUnnamedModule()); }
+                    }
                     exports.put(pkg, targets);
                 }
             }

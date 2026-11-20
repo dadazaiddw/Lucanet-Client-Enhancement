@@ -32,6 +32,7 @@ foreach($name in $expected){
 $runtimeJar=Join-Path $runtime 'dist\client-enhancement.jar'
 $jar=[IO.Compression.ZipFile]::OpenRead($runtimeJar)
 try{
+    Assert-Package (@($jar.Entries | Where-Object { $_.FullName -match '^lombok/|/(JavaLombok|LombokCompiler|LombokLibrary)(\$|\.)' }).Count -eq 0) 'removed Lombok processors/hooks must not be delivered'
     foreach($name in @('META-INF/ASM-LICENSE.txt','META-INF/IDEA-ICONS-LICENSE.txt','META-INF/IDEA-ICONS-NOTICE.txt')) {
         Assert-Package ($null -ne $jar.GetEntry($name)) ('third party license retained: '+$name)
     }

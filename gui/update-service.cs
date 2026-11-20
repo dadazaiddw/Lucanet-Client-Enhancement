@@ -164,10 +164,32 @@ internal sealed class GitHubUpdateService : IUpdateService {
             }
             if (wrapped) applicationRoot = Path.Combine(destination,packageDirectory);
             Directory.CreateDirectory(destination);
-            foreach (var entry in zip.Entries) {
-                string target = Path.Combine(destination,entry.FullName.Replace('/',Path.DirectorySeparatorChar).Replace('\\',Path.DirectorySeparatorChar));
-                if (entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\")) Directory.CreateDirectory(target);
-                else { Directory.CreateDirectory(Path.GetDirectoryName(target)); entry.ExtractToFile(target,false); }
+            try {
+                // ZIP directory lengths are supplied by the archive, not verified output sizes.
+                // Bound actual decompressed bytes as well; never write past an entry's declared size.
+                long extractedBytes = 0; var buffer = new byte[65536];
+                foreach (var entry in zip.Entries) {
+                    string target = Path.Combine(destination,entry.FullName.Replace('/',Path.DirectorySeparatorChar).Replace('\\',Path.DirectorySeparatorChar));
+                    if (entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\")) Directory.CreateDirectory(target);
+                    else {
+                        Directory.CreateDirectory(Path.GetDirectoryName(target));
+                        using (var input = entry.Open())
+                        using (var output = new FileStream(target,FileMode.CreateNew,FileAccess.Write,FileShare.None)) {
+                            long length = 0; int read;
+                            while ((read = input.Read(buffer,0,buffer.Length)) > 0) {
+                                length += read; extractedBytes += read;
+                                if (length > entry.Length || extractedBytes > 256L * 1024 * 1024)
+                                    throw new InvalidDataException("更新包实际解压体积与声明不符或超过限制。");
+                                output.Write(buffer,0,read);
+                            }
+                            if (length != entry.Length) throw new InvalidDataException("更新包文件长度不符，已停止解压。");
+                        }
+                    }
+                }
+            } catch {
+                // destination was required to be absent and was created by this call only.
+                try { Directory.Delete(destination,true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                throw;
             }
         }
         return applicationRoot;

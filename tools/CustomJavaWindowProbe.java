@@ -88,6 +88,7 @@ public final class CustomJavaWindowProbe {
             await(()->text.getFont().getSize()==20&&((JList<?>)field(binding,"list")).getFont().getSize()==20,"live code and completion font");
             Thread.sleep(1700);check(edt(()->initial.equals(text.getText())),"native template imports unchanged after attachment");
             verifyLibraryCompletion();
+            verifyAnnotationCompletion();
             String incomplete="package edited.pkg;\n// import comment\npublic class WindowType {\n    Fil value;\n}\n";
             edt(()->{text.setText(incomplete);text.setCaretPosition(incomplete.indexOf("Fil")+3);key("control SPACE");return null;});
             await(()->has("import=java.io.File"),"full unit class completion");
@@ -263,6 +264,21 @@ public final class CustomJavaWindowProbe {
         });
         await(()->find((Window)field(editor,"frame"),"customJavaDiagnostics").isVisible(),"open editor rechecks against removed library");
         System.out.println("PASS: full-source editor imports types from the active Script library provider and notices removal");
+    }
+    static void verifyAnnotationCompletion()throws Exception{
+        // Exercise automatic dispatch on the real native text component, without Ctrl+Space.
+        edt(()->{call(binding,"dismiss");text.setText("public class WindowType {\n    \n}\n");text.setCaretPosition(text.getText().indexOf("    ")+4);text.requestFocusInWindow();return null;});
+        await(()->text.isFocusOwner(),"annotation input focus");
+        edt(()->{text.replaceSelection("@");return null;});
+        await(()->has("name=Override")&&((JPopupMenu)field(binding,"popup")).isVisible(),"typing @ triggers annotation suggestions");
+        edt(()->{for(int i=0;i<rows().size();i++)check(String.valueOf(rows().get(i)).contains("icon=annotation"),"annotation candidates only");call(binding,"dismiss");return null;});
+        String incomplete="package fixture;\n@Doc\npublic @interface WindowType {}\n";
+        edt(()->{text.setText(incomplete);text.setCaretPosition(incomplete.indexOf("@Doc")+4);key("control SPACE");return null;});
+        await(()->incomplete.equals(field(binding,"snapshot"))&&has("import=java.lang.annotation.Documented"),"annotation completion with import");
+        edt(()->{select("import=java.lang.annotation.Documented");call(binding,"accept");check(text.getText().contains("import java.lang.annotation.Documented;")&&text.getText().contains("@Documented\n"),"annotation accepted with auto import: "+text.getText());return null;});
+        Thread.sleep(1100);
+        edt(()->{key("control Z");check(incomplete.equals(text.getText()),"one undo restores annotation and import");return null;});
+        System.out.println("PASS: native @ auto-completion; annotation-only suggestions, auto import and atomic undo");
     }
     static JDialog overridePicker(){
         for(Window window:Window.getWindows())if("customJavaOverrides".equals(window.getName())&&window.isShowing())return (JDialog)window;

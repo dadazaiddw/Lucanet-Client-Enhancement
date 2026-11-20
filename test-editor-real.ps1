@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$LucanetHome='D:\Soft\LucaNet',[string]$Resources='C:\ProgramData\LucaNet\Youniverse\.resource',[string]$JdkHome='',[ValidateSet('JavaEditorRealProbe','CustomJavaRealProbe','CustomJavaWindowProbe')][string]$Probe='JavaEditorRealProbe')
+param([string]$LucanetHome='D:\Soft\LucaNet',[string]$Resources='C:\ProgramData\LucaNet\Youniverse\.resource',[string]$JdkHome='',[ValidateSet('JavaEditorRealProbe','CustomJavaRealProbe','CustomJavaWindowProbe','NativeCompilerIsolationProbe')][string]$Probe='JavaEditorRealProbe')
 $ErrorActionPreference='Stop'
 $jdk=& (Join-Path $PSScriptRoot 'resolve-lucanet-jdk.ps1') -LucanetHome $LucanetHome -JdkHome $JdkHome
 $work=Join-Path $PSScriptRoot ('build\java-editor-real-'+[Guid]::NewGuid().ToString('N'))
@@ -28,6 +28,10 @@ foreach($suite in @(@('2311.0.81+6','dom-2311.0.81+6-*.jar','_vm-2311.0.81+6-*.j
         $widgetDeps+=@(Get-ChildItem -LiteralPath $Resources -Filter 'app.ui-2311.0.81+6-*.jar' -File | ForEach-Object FullName)
     }
     $classpath=(@($work,$scene,$ui)+$widgetDeps+$collections) -join ';'
+    if($Probe -eq 'NativeCompilerIsolationProbe') {
+        & $jdk.Java '-Xverify:all' '-Djava.awt.headless=true' '-Dfixture.baseline=true' -cp $classpath $Probe (Join-Path $work ('editor-'+$suite[0]+'.png'))
+        if($LASTEXITCODE -ne 0){throw 'Native compiler baseline failed'}
+    }
     & $jdk.Java '-Xverify:all' '-Djava.awt.headless=false' "-javaagent:$PSScriptRoot\dist\client-enhancement.jar" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$work\features.properties" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe (Join-Path $work ('editor-'+$suite[0]+'.png'))
     if($LASTEXITCODE -ne 0){throw 'Real Java editor probe failed'}
 }

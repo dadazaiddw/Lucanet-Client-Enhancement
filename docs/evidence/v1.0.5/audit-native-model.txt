@@ -1,0 +1,6 @@
+PASS: native custom types / XML / compile and execute through native ClassLoader / live switch
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+PASS: native custom types / XML / compile and execute through native ClassLoader / live switch
+Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-07bc371ac8274278952ecbb2b3cab0ce

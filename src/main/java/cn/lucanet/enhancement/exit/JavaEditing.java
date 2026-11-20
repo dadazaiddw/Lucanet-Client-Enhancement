@@ -15,7 +15,13 @@ final class JavaEditing {
         text.select(start,end);text.replaceSelection(value);
     }
     static int lineStart(String text,int at){return text.lastIndexOf('\n',Math.max(-1,at-1))+1;}
-    static int lineEnd(String text,int at){int p=text.indexOf('\n',at);return p<0?text.length():p;}
+    static int lineEnd(String text,int at){int p=text.indexOf('\n',at);return p<0?text.length():p>0&&text.charAt(p-1)=='\r'?p-1:p;}
+    private static int afterSeparator(String text,int end){
+        if(end<text.length()&&text.charAt(end)=='\r'&&end+1<text.length()&&text.charAt(end+1)=='\n')return end+2;
+        return end<text.length()&&text.charAt(end)=='\n'?end+1:end;
+    }
+    private static String newline(String text){int first=text.indexOf('\n');return first>0&&text.charAt(first-1)=='\r'?"\r\n":"\n";}
+    private static String separator(String text,int end){int next=afterSeparator(text,end);return next>end?text.substring(end,next):newline(text);}
     static int[] lines(JTextComponent editor) {
         String text=editor.getText();int start=editor.getSelectionStart(),end=editor.getSelectionEnd();
         if(end>start && end>0 && text.charAt(end-1)=='\n')end--;
@@ -24,22 +30,23 @@ final class JavaEditing {
     static void duplicate(JTextComponent editor) {
         String text=editor.getText();int start=editor.getSelectionStart(),end=editor.getSelectionEnd();
         if(start!=end){String selected=text.substring(start,end);replace(editor,end,end,selected);editor.select(end,end+selected.length());}
-        else {int[] range=lines(editor);String line=text.substring(range[0],range[1]);replace(editor,range[1],range[1],"\n"+line);editor.setCaretPosition(end+line.length()+1);}
+        else {int[] range=lines(editor);String line=text.substring(range[0],range[1]),breakLine=separator(text,range[1]);replace(editor,range[1],range[1],breakLine+line);editor.setCaretPosition(end+line.length()+breakLine.length());}
     }
     static void deleteLines(JTextComponent editor) {
         String text=editor.getText();int[] range=lines(editor);
-        if(range[1]<text.length())range[1]++;else if(range[0]>0)range[0]--;
+        if(range[1]<text.length())range[1]=afterSeparator(text,range[1]);
+        else if(range[0]>0){range[0]--;if(range[0]>0&&text.charAt(range[0]-1)=='\r')range[0]--;}
         replace(editor,range[0],range[1],"");
     }
     static void move(JTextComponent editor,int direction) {
         String text=editor.getText();int[] r=lines(editor);int caret=editor.getCaretPosition();boolean selected=editor.getSelectionStart()!=editor.getSelectionEnd();
         int start=r[0],end=r[1],shift;
         if(direction<0) {
-            if(start==0)return;int before=lineStart(text,start-1);String previous=text.substring(before,start-1);
-            replace(editor,before,end,text.substring(start,end)+"\n"+previous);shift=before-start;
+            if(start==0)return;int before=lineStart(text,start-1),previousEnd=lineEnd(text,before);String previous=text.substring(before,previousEnd);
+            replace(editor,before,end,text.substring(start,end)+text.substring(previousEnd,start)+previous);shift=before-start;
         }else{
-            if(end==text.length())return;int after=lineEnd(text,end+1);String next=text.substring(end+1,after);
-            replace(editor,start,after,next+"\n"+text.substring(start,end));shift=next.length()+1;
+            if(end==text.length())return;int nextStart=afterSeparator(text,end),after=lineEnd(text,nextStart);String next=text.substring(nextStart,after);
+            replace(editor,start,after,next+text.substring(end,nextStart)+text.substring(start,end));shift=next.length()+nextStart-end;
         }
         if(selected)editor.select(start+shift,end+shift);else editor.setCaretPosition(caret+shift);
     }
@@ -63,13 +70,14 @@ final class JavaEditing {
     static void newLine(JTextComponent editor) {
         String text=editor.getText();int end=lineEnd(text,editor.getCaretPosition());int start=lineStart(text,end);
         String line=text.substring(start,end);String indent=line.substring(0,line.length()-line.stripLeading().length());
-        if(line.stripTrailing().endsWith("{"))indent+="    ";replace(editor,end,end,"\n"+indent);
+        if(line.stripTrailing().endsWith("{"))indent+="    ";replace(editor,end,end,separator(text,end)+indent);
     }
     static void join(JTextComponent editor) {
         String text=editor.getText();int end=lineEnd(text,editor.getCaretPosition());if(end==text.length())return;
         // Joining a // comment can silently comment out executable code.
-        if(!codeAt(text,end)||!codeAt(text,end+1))return;
-        int next=end+1;while(next<text.length()&&(text.charAt(next)==' '||text.charAt(next)=='\t'))next++;
+        int next=afterSeparator(text,end);
+        if(!codeAt(text,end)||!codeAt(text,next))return;
+        while(next<text.length()&&(text.charAt(next)==' '||text.charAt(next)=='\t'))next++;
         replace(editor,end,next," ");
     }
     static boolean template(JTextComponent editor) {
@@ -87,7 +95,7 @@ final class JavaEditing {
         }
         if(!codeAt(text,start))return false;
         String line=text.substring(lineStart(text,start),start);String indent=line.substring(0,line.length()-line.stripLeading().length());
-        value=value.replace("\n","\n"+indent);int cursor=value.indexOf('|');
+        value=value.replace("\n",newline(text)+indent);int cursor=value.indexOf('|');
         replace(editor,start,end,value.replace("|",""));editor.setCaretPosition(start+cursor);return true;
     }
     static boolean codeAt(String text,int at) {
@@ -126,7 +134,8 @@ final class JavaEditing {
             boolean literal=!codeAt(text,start+leading) && !line.stripLeading().startsWith("//") && !line.stripLeading().startsWith("/*");
             if(literal)result.append(line);else result.append("    ".repeat(Math.max(0,depth-(tokens.startsWith("}")?1:0)))).append(line.stripLeading());
             for(char c:tokens.toCharArray()){if(c=='{')depth++;if(c=='}')depth=Math.max(0,depth-1);}
-            if(end<range[1])result.append('\n');start=end+1;
+            int next=Math.min(range[1],afterSeparator(text,end));
+            if(end<next)result.append(text,end,next);start=next;
         }
         if(!result.toString().equals(text.substring(range[0],range[1])))replace(editor,range[0],range[1],result.toString());
     }

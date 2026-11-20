@@ -14,18 +14,21 @@ import javax.lang.model.type.*;
 import javax.lang.model.util.*;
 import javax.tools.*;
 
-/** Read-only javac analysis. No class generation, annotation processors, or user-code execution.
+/** In-memory javac analysis without annotation processing or script execution.
  * Loaded behind a platform-parent classloader so protocol-1 agents can also load jdk.compiler. */
 public final class JavaIntelligence implements Function<Map<String,Object>,List<Map<String,String>>>, AutoCloseable {
     private static final String MARK = "__lucanet_completion__";
     private static final Pattern TYPE_NAME=Pattern.compile("\\b(?:class|interface|enum|record)\\s+([\\p{javaJavaIdentifierPart}]+)");
     private static final Pattern PACKAGE_NAME=Pattern.compile("\\bpackage\\s+([\\p{javaJavaIdentifierPart}.]+)\\s*;");
+    private static final Pattern ANNOTATION_NAME=Pattern.compile("@\\s*((?:[\\p{javaJavaIdentifierPart}]+\\s*\\.\\s*)*)[\\p{javaJavaIdentifierPart}]*$");
     private final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
     private StandardJavaFileManager files;
     private String classpath;
     private Object libraryRevision;
     private final SortedMap<String,SortedSet<String>> classes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
     private boolean indexed;
+    private final Set<String> annotationTypes=new TreeSet<>();
+    private boolean annotationsIndexed;
     private Map<String,String> companionSources=Collections.emptyMap();
     private Set<String> customNames=Collections.emptySet();
     private Map<?,?> lastCompanions;
@@ -63,6 +66,10 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             int base = Integer.parseInt(embedded[1]);
             if(operation.equals("parameters"))return parameters(text,caret,embedded);
             if(operation.equals("organize"))return organize(input,embedded[0]);
+            if(operation.equals("complete")){
+                Matcher annotation=ANNOTATION_NAME.matcher(mask(text.substring(0,caret)));
+                if(annotation.find())return annotations(input,caret,start,end,prefix,annotation.group(1).replaceAll("\\s+",""),embedded);
+            }
             Analysis attributed=null;
             List<Map<String,String>> fixes=List.of();
             if(quickFix||operation.equals("diagnostics")||operation.equals("override")||operation.startsWith("generate:")){
@@ -70,8 +77,8 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                 attributed=analyze(embedded[0],true,collector,true);
                 List<Diagnostic<? extends JavaFileObject>> errors=new ArrayList<>();
                 for(Diagnostic<? extends JavaFileObject> diagnostic:collector.getDiagnostics())
-                    if(diagnostic.getKind()==Diagnostic.Kind.ERROR&&diagnostic.getSource()!=null&&
-                        diagnostic.getSource().toUri().equals(attributed.unit.getSourceFile().toUri()))errors.add(diagnostic);
+                    if(diagnostic.getKind()==Diagnostic.Kind.ERROR&&(diagnostic.getSource()==null||
+                        diagnostic.getSource().toUri().equals(attributed.unit.getSourceFile().toUri())))errors.add(diagnostic);
                 if(operation.equals("diagnostics"))return JavaTypeActions.diagnostics(errors,text.length());
                 JavaTypeActions actions=new JavaTypeActions(attributed.unit,attributed.trees,attributed.elements,attributed.types,text,caret);
                 if(operation.startsWith("generate:"))return new JavaMemberGeneration(attributed.unit,attributed.trees,attributed.elements,attributed.types,text,caret).apply(operation.substring(9),input);
@@ -178,7 +185,102 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         for (String path : next.split(Pattern.quote(File.pathSeparator))) if (!path.isEmpty() && Files.exists(Path.of(path))) paths.add(new File(path));
         files.setLocation(StandardLocation.CLASS_PATH, paths);
         classpath = next; libraryRevision=nextRevision; indexed = false; classes.clear();
+        annotationTypes.clear();annotationsIndexed=false;
     }
+
+    /** Annotation-name completion is separate from expressions inside annotation arguments. */
+    private List<Map<String,String>> annotations(Map<String,Object> input,int caret,int start,int end,String prefix,String qualifier,String[] embedded)throws IOException{
+        indexAnnotations();
+        int base=Integer.parseInt(embedded[1]);
+        String source=embedded[0].substring(0,base+start)+MARK+embedded[0].substring(base+end);
+        Analysis a=analyze(source,true);TreePath location=marker(a);Scope scope=scope(a,location);
+        Map<String,TypeElement> candidates=new LinkedHashMap<>();
+        Set<String> names=new TreeSet<>(annotationTypes);names.addAll(customNames);
+        for(String name:names)if(matches(simpleName(name),prefix)){
+            try{TypeElement type=a.elements.getTypeElement(name);if(type!=null&&type.getKind()==ElementKind.ANNOTATION_TYPE)candidates.put(name,type);}
+            catch(RuntimeException|LinkageError unavailable){/* A broken optional library must not hide other annotations. */}
+        }
+        new TreePathScanner<Void,Void>(){@Override public Void visitClass(ClassTree node,Void unused){
+            Element type=a.trees.getElement(getCurrentPath());
+            if(type instanceof TypeElement&&type.getKind()==ElementKind.ANNOTATION_TYPE)candidates.put(((TypeElement)type).getQualifiedName().toString(),(TypeElement)type);
+            return super.visitClass(node,unused);
+        }}.scan(a.unit,null);
+        if(scope!=null)for(Scope cursor=scope;cursor!=null;cursor=cursor.getEnclosingScope())for(Element type:cursor.getLocalElements())
+            if(type instanceof TypeElement&&type.getKind()==ElementKind.ANNOTATION_TYPE)candidates.put(((TypeElement)type).getQualifiedName().toString(),(TypeElement)type);
+        TypeElement qualifierType=qualifier.isEmpty()?null:resolveType(a,qualifier.substring(0,qualifier.length()-1));
+        if(qualifierType!=null)for(Element type:qualifierType.getEnclosedElements())
+            if(type instanceof TypeElement&&type.getKind()==ElementKind.ANNOTATION_TYPE)candidates.put(((TypeElement)type).getQualifiedName().toString(),(TypeElement)type);
+        Map<String,Map<String,String>> rows=new LinkedHashMap<>();
+        String currentPackage=a.unit.getPackageName()==null?"":a.unit.getPackageName().toString();
+        JavaGeneratedNames importContext=qualifier.isEmpty()&&Boolean.TRUE.equals(input.get("compilationUnit"))?
+                new JavaGeneratedNames(a.unit,a.trees,a.elements,location!=null?location:JavaGeneratedNames.at(a.unit,a.trees,caret)):null;
+        for(TypeElement type:candidates.values()){
+            String name=type.getSimpleName().toString(),qualified=type.getQualifiedName().toString();
+            if(!matches(name,prefix))continue;
+            if(!qualifier.isEmpty()&&!qualified.equals(qualifier+name)&&(qualifierType==null||!type.getEnclosingElement().equals(qualifierType)))continue;
+            boolean accessible=publicType(type)||a.elements.getPackageOf(type).getQualifiedName().contentEquals(currentPackage);
+            if(scope!=null)try{accessible=a.trees.isAccessible(scope,type);}catch(IllegalArgumentException unavailable){}
+            if(!accessible)continue;
+            Map<String,String> row=add(rows,name,name+" — "+qualified,name,qualifier.isEmpty()?qualified:"","annotation",name.length());
+            iconMetadata(row,a,type);row.put("detail",a.elements.getPackageOf(type).getQualifiedName().toString());
+            row.put("rank",String.valueOf(classRank(qualified,a.unit)));
+            if(importContext!=null){
+                Map<String,String> plan=new HashMap<>();plan.put("insert",qualified);
+                new JavaGeneratedNames(importContext).shorten(plan);
+                row.put("unitReference",plan.get("insert"));row.put("imports",plan.getOrDefault("imports",""));
+            }
+        }
+        List<Map<String,String>> result=new ArrayList<>(rows.values());
+        result.sort(Comparator.comparingInt((Map<String,String> row)->matchRank(row.get("name"),prefix))
+                .thenComparingInt(row->Integer.parseInt(row.get("rank"))).thenComparing(row->row.get("name"),String.CASE_INSENSITIVE_ORDER).thenComparing(row->row.get("label")));
+        return result.size()>150?result.subList(0,150):result;
+    }
+
+    /** Read only the class header, without loading or executing dependency classes. */
+    private void indexAnnotations()throws IOException{
+        if(annotationsIndexed)return;
+        for(String path:classpath.split(Pattern.quote(File.pathSeparator))){
+            if(!path.endsWith(".jar")||!Files.isRegularFile(Path.of(path)))continue;
+            try(ZipFile jar=new ZipFile(path)){
+                Enumeration<? extends ZipEntry> entries=jar.entries();
+                while(entries.hasMoreElements()){
+                    ZipEntry entry=entries.nextElement();String name=annotationClassName(entry.getName());if(name==null)continue;
+                    try(InputStream in=jar.getInputStream(entry)){if(annotationFlag(in))annotationTypes.add(name);}
+                    catch(IOException unavailable){/* Skip malformed class entries. */}
+                }
+            }catch(IOException unavailable){/* Keep JDK annotations available. */}
+        }
+        for(Set<JavaFileManager.Location> locations:files.listLocationsForModules(StandardLocation.SYSTEM_MODULES))for(JavaFileManager.Location location:locations){
+            if(!files.inferModuleName(location).startsWith("java."))continue;
+            for(JavaFileObject file:files.list(location,"",EnumSet.of(JavaFileObject.Kind.CLASS),true)){
+                String name=annotationClassName(files.inferBinaryName(location,file).replace('.','/')+".class");if(name==null)continue;
+                try(InputStream in=file.openInputStream()){if(annotationFlag(in))annotationTypes.add(name);}
+                catch(IOException unavailable){/* Skip unreadable optional classes. */}
+            }
+        }
+        annotationsIndexed=true;
+    }
+    private static String annotationClassName(String entry){
+        if(!entry.endsWith(".class")||entry.startsWith("META-INF/")||entry.indexOf('/')<0)return null;
+        String name=entry.substring(0,entry.length()-6).replace('/','.').replace('$','.');
+        if(name.startsWith("sun.")||name.startsWith("com.sun.")||name.contains(".internal."))return null;
+        return name;
+    }
+    private static boolean annotationFlag(InputStream input)throws IOException{
+        DataInputStream data=new DataInputStream(new BufferedInputStream(input));
+        if(data.readInt()!=0xCAFEBABE)return false;
+        data.readInt();int count=data.readUnsignedShort();
+        for(int i=1;i<count;i++)switch(data.readUnsignedByte()){
+            case 1:skipClassBytes(data,data.readUnsignedShort());break;
+            case 3:case 4:case 9:case 10:case 11:case 12:case 17:case 18:skipClassBytes(data,4);break;
+            case 5:case 6:skipClassBytes(data,8);i++;break;
+            case 7:case 8:case 16:case 19:case 20:skipClassBytes(data,2);break;
+            case 15:skipClassBytes(data,3);break;
+            default:return false;
+        }
+        return (data.readUnsignedShort()&0x2000)!=0;
+    }
+    private static void skipClassBytes(DataInputStream data,int count)throws IOException{if(data.skipBytes(count)!=count)throw new EOFException();}
 
     /** Use the native class structure, replacing only the active member in the analysis copy. */
     private String[] embed(Map<String,Object> input, String text) throws IOException {
@@ -246,8 +348,7 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         String currentName=sourceName(source);
         List<JavaFileObject> units=new ArrayList<>();units.add(sourceFile(currentName,source));
         if(includeCompanions)for(Map.Entry<String,String> other:companionSources.entrySet())if(!other.getKey().equals(currentName))units.add(sourceFile(other.getKey(),other.getValue()));
-        JavacTask task = (JavacTask) compiler.getTask(new StringWriter(),files,diagnostics,
-                Arrays.asList("-proc:none","-Xlint:none","-implicit:none"),null,units);
+        JavacTask task = (JavacTask) compiler.getTask(new StringWriter(),files,diagnostics,List.of("-proc:none","-Xlint:none","-implicit:none"),null,units);
         CompilationUnitTree unit = task.parse().iterator().next();
         if (attribution) { try { task.analyze(); } catch (RuntimeException incomplete) { /* Partially typed code is expected. */ } }
         return new Analysis(unit,Trees.instance(task),task.getElements(),task.getTypes());

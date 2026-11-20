@@ -97,7 +97,7 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
     static String automaticOperation(String source,int caret,boolean followingParameters) {
         if(caret<=0||caret>source.length())return null;
         boolean code=JavaEditing.codeAt(source,caret);char last=source.charAt(caret-1);
-        if(code&&(Character.isJavaIdentifierPart(last)||last=='.'))return "complete";
+        if(code&&(Character.isJavaIdentifierPart(last)||last=='.'||last=='@'))return "complete";
         int before=caret;while(before>0&&Character.isWhitespace(source.charAt(before-1)))before--;
         if(before==0)return null;last=source.charAt(before-1);
         if(code&&(last=='('||last==','))return "parameters";
@@ -309,7 +309,7 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
             if(!operation.startsWith("generate:")&&!Set.of("parameters","quickFix","override").contains(operation)&&!JavaEditing.codeAt(source,at)){if(manual)hint("注释和字符串中不提供 Java 补全");return;}
             if(!operation.equals("parameters"))parameterPopup=false;
             if(!manual && operation.equals("complete") && at>0 && (source.charAt(at-1)=='('||source.charAt(at-1)==',')){request("parameters",false);return;}
-            if(!manual&&operation.equals("complete")&&(at==0||!(Character.isJavaIdentifierPart(source.charAt(at-1))||source.charAt(at-1)=='.')))return;
+            if(!manual&&operation.equals("complete")&&(at==0||!(Character.isJavaIdentifierPart(source.charAt(at-1))||source.charAt(at-1)=='.'||source.charAt(at-1)=='@')))return;
             try {
                 JavaEditorContext captured=new JavaEditorContext(target);
                 Map<String,Object> input=captured.request(target,operation);

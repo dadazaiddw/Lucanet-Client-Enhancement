@@ -1,0 +1,2 @@
+PASS: Lombok annotations, generated members/diagnostics/parameters, companion sources, repeated edits, dependency reload, native policies and processor coexistence
+Lombok test evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\lombok-test-2662560d3f69439eb1655a4c3d8e3b15

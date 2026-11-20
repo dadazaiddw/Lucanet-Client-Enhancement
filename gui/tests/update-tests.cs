@@ -60,7 +60,19 @@ internal static class UpdateTests {
         network.Status=HttpStatusCode.OK;network.Redirect="https://example.com/untrusted.zip";
         try{await service.DownloadAsync(info,null);throw new Exception("foreign redirect accepted");}catch(InvalidDataException){ }
         Assert(!File.Exists(Path.Combine(work,"escape.txt")),"ZIP extraction never escaped cache");
-        Console.WriteLine("PASS: GitHub stable releases, numeric version comparison, no downgrade, 404/rate limit, checksum download, wrapped/legacy packages, executable root, mixed layout rejection, redirect allowlist and ZIP traversal rejection");
+        // The central directory is untrusted even when a download's SHA matches its release.
+        // Seven decompressed bytes advertised as one used to bypass the metadata-only bound.
+        foreach(int declaredLength in new[]{1,20}) {
+            byte[] forged=(byte[])bytes.Clone();bool patched=false;
+            for(int i=0;i<forged.Length-46;i++) if(BitConverter.ToUInt32(forged,i)==0x02014b50) {
+                Array.Copy(BitConverter.GetBytes(declaredLength),0,forged,i+24,4);patched=true;break;
+            }
+            Assert(patched,"forged ZIP fixture contains central directory");File.WriteAllBytes(zip,forged);
+            string destination=Path.Combine(work,"forged-size-"+declaredLength);
+            Reject(()=>GitHubUpdateService.VerifyAndExtract(zip,Hash(forged),destination),"forged decompressed length");
+            Assert(!Directory.Exists(destination),"partial extraction cleaned after a length mismatch");
+        }
+        Console.WriteLine("PASS: GitHub stable releases, numeric version comparison, no downgrade, 404/rate limit, checksum download, wrapped/legacy packages, executable root, mixed layout rejection, redirect allowlist, ZIP traversal rejection, forged decompressed lengths and partial extraction cleanup");
     }
     private static byte[] Package(string extra,bool incomplete=false,string prefix="lucanet-client-enhancement/",bool directoryEntry=false){
         using(var stream=new MemoryStream()){
