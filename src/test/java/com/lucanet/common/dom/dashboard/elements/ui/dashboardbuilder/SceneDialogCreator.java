@@ -40,6 +40,8 @@ public final class SceneDialogCreator {
     public static final class TestDialog extends JDialog {
         public int shows,disposes,showsFinished;
         public TestDialog(Window owner,boolean modal){super(owner,"scene fixture",modal?ModalityType.DOCUMENT_MODAL:ModalityType.MODELESS);setType(Window.Type.UTILITY);}
+        // Mirrors Lucanet's empty-title fallback; the enhancement must bypass this display setter.
+        @Override public void setTitle(String title){super.setTitle(title==null || title.isEmpty()?"inherited owner title":title);}
         @SuppressWarnings("deprecation") @Override public void show(){shows++;super.show();showsFinished++;}
         @Override public void dispose(){disposes++;super.dispose();}
     }

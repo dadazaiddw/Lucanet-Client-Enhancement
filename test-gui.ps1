@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param()
 $ErrorActionPreference='Stop'
 . (Join-Path $PSScriptRoot 'tools\gui-core.ps1')
@@ -92,7 +92,7 @@ $versions=Join-Path $fake '.client-enhancement\versions';New-Item -ItemType Dire
 $digest=(Get-ClientEnhancementHash $agent).ToLowerInvariant()
 Copy-Item -LiteralPath $agent -Destination (Join-Path $versions ($digest+'.jar'))
 $pointer=Join-Path $fake '.client-enhancement\active.properties'
-[IO.File]::WriteAllText($pointer,"sha256=$digest`nversion=1.0.3`n")
+[IO.File]::WriteAllText($pointer,"sha256=$digest`nversion=1.0.4`n")
 $status=Get-ClientEnhancementStatus $fake -LogDirectory $logs
 Assert-Gui ($status.Current -and $status.State -eq 'installed') 'active hot-update version is current'
 [IO.File]::WriteAllText($pointer,'sha256=invalid')

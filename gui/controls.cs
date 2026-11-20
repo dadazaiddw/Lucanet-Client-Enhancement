@@ -27,6 +27,7 @@ internal sealed class NavigationIconButton : Button {
             float scale = Height / 44F;
             float x = glyph == NavigationGlyph.Back ? 22F * scale : Width / 2F;
             float y = Height / 2F;
+            if (glyph == NavigationGlyph.Settings) scale *= 2F / 3F;
             using (var pen = new Pen(Enabled ? ForeColor : SystemColors.GrayText, 1.7F * scale)) {
                 pen.StartCap = LineCap.Round; pen.EndCap = LineCap.Round; pen.LineJoin = LineJoin.Round;
                 if (glyph == NavigationGlyph.Back) {

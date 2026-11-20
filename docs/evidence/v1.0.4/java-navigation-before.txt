@@ -1,0 +1,4 @@
+font=18 open_ms=71.326
+selection_render_ms median=5.384 p95=10.681 max=16.444
+font=30 open_ms=31.257
+selection_render_ms median=3.572 p95=4.738 max=5.564

@@ -21,6 +21,10 @@ internal sealed partial class EnhancementForm {
     private CheckBox scriptDoubleClick;
     private CheckBox nativeSceneDialogFrame;
     private bool restoringSceneDialogFrame;
+    private CheckBox javaEditorAssist;
+    private bool restoringJavaEditorAssist;
+    private NumericUpDown javaCompletionFontSize;
+    private bool restoringJavaCompletionFontSize;
     private bool restoringDoubleClick;
     private ShortcutBox scriptShortcut;
     private ScriptFeatureSettings scriptPreferences;
@@ -150,7 +154,7 @@ internal sealed partial class EnhancementForm {
         var reset=NavigationButton("恢复默认设置","resetFeatureSettings");
         tips.SetToolTip(reset,"恢复功能及状态刷新默认值，保留更新设置。");
         reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
-            nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
+            javaEditorAssist.Checked=true;javaCompletionFontSize.Value=18;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
         sidebar.Controls.Add(reset,0,6);
     }
 
@@ -302,6 +306,31 @@ internal sealed partial class EnhancementForm {
         AddAutoRow(scriptCard,SettingRow("“开始”快捷键", "支持 Ctrl / Alt + 字母、数字或 F1–F12，也可组合 Shift。",scriptShortcut));
         shortcutHint.Margin=new Padding(0,8,0,0);AddAutoRow(scriptCard,shortcutHint);
         AddAutoRow(stack,scriptCard);
+        var editorCard=SettingsCard("featureJavaEditorCard");
+        AddSectionHeading(editorCard,"Java 编码辅助","结合当前源代码与自定义 Class 补全代码、查看参数、自动导包及展开后缀模板。");
+        bool assist=true;
+        try{assist=settingsStore.Features.LoadJavaEditorAssist();}catch(IOException){assist=false;}catch(UnauthorizedAccessException){assist=false;}
+        javaEditorAssist=new SettingToggle {Name="javaEditorAssist",Checked=assist,AccessibleName="Java 编码辅助",Anchor=AnchorStyles.Right};
+        javaEditorAssist.CheckedChanged+=delegate {
+            if(restoringJavaEditorAssist)return;
+            try{settingsStore.Features.SaveJavaEditorAssist(javaEditorAssist.Checked);}
+            catch(Exception error){restoringJavaEditorAssist=true;javaEditorAssist.Checked=!javaEditorAssist.Checked;restoringJavaEditorAssist=false;
+                ShowMessage("编码辅助设置未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(editorCard,SettingRow("启用 Java 编码辅助","默认开启；已打开的编辑框约 250 毫秒内更新，关闭后恢复原编辑方式。",javaEditorAssist));
+        AddAutoRow(editorCard,SettingsDivider());
+        int lookupSize=18;
+        try{lookupSize=settingsStore.Features.LoadJavaCompletionFontSize();}catch(IOException){}catch(UnauthorizedAccessException){}
+        javaCompletionFontSize=new NumericUpDown {Name="javaCompletionFontSize",Minimum=12,Maximum=30,Value=lookupSize,
+            Width=90,Anchor=AnchorStyles.Right,AccessibleName="代码提示字号"};
+        javaCompletionFontSize.ValueChanged+=delegate {
+            if(restoringJavaCompletionFontSize)return;
+            try{settingsStore.Features.SaveJavaCompletionFontSize((int)javaCompletionFontSize.Value);lookupSize=(int)javaCompletionFontSize.Value;}
+            catch(Exception error){restoringJavaCompletionFontSize=true;javaCompletionFontSize.Value=lookupSize;restoringJavaCompletionFontSize=false;
+                ShowMessage("提示字号未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
+        };
+        AddAutoRow(editorCard,SettingRow("代码提示字号","默认 18，支持 12–30；补全列表及参数提示立即更新。",javaCompletionFontSize));
+        AddAutoRow(stack,editorCard);
         var dialogCard=SettingsCard("featureDialogCard");
         AddSectionHeading(dialogCard,"场景对话框","调整操作设为“显示为对话框”时的窗口外观。");
         bool nativeFrame=true;

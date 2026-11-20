@@ -50,4 +50,12 @@ final class FeatureSettings {
         try { return Boolean.parseBoolean(load().getProperty("nativeSceneDialogFrame", "true").trim()); }
         catch (Exception failure) { return false; }
     }
+    static boolean javaEditorAssist() {
+        try { return Boolean.parseBoolean(load().getProperty("javaEditorAssist", "true").trim()); }
+        catch (Exception failure) { return false; }
+    }
+    static int javaCompletionFontSize() {
+        try { int value=Integer.parseInt(load().getProperty("javaCompletionFontSize","18").trim());return value>=12&&value<=30?value:18; }
+        catch(Exception failure){return 18;}
+    }
 }

@@ -43,7 +43,7 @@ final class NativeTransformer implements ClassFileTransformer {
 
     static boolean isTarget(String name) {
         return APPLICATION.equals(name) || CONFIG.equals(name) || DIALOG.equals(name) || LINK.equals(name) || PANEL.equals(name)
-                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name) || SceneDialogStyle.CREATOR.equals(name);
+                || SCRIPT_GENERAL.equals(name) || EXPLORER_INTERACTION.equals(name) || SceneDialogStyle.CREATOR.equals(name) || JavaEditorAssist.SOURCE.equals(name);
     }
 
     @Override
@@ -51,6 +51,23 @@ final class NativeTransformer implements ClassFileTransformer {
                             ProtectionDomain domain, byte[] bytes) {
         if (!isTarget(name)) { return null; }
         try {
+            if(JavaEditorAssist.SOURCE.equals(name)) {
+                if(!NativeBridge.isDesktopClient(loader))return null;
+                if(module!=null && module.isNamed()) {
+                    java.util.Set<Module> target=java.util.Set.of(JavaEditorAssist.class.getModule());
+                    java.util.Set<Module> modules=module.getLayer()==null?java.util.Set.of(module):module.getLayer().modules();
+                    for(Module nativeModule:modules) {
+                        java.util.Map<String,java.util.Set<Module>> access=new java.util.HashMap<>();
+                        for(String pkg:java.util.List.of("com.lucanet.common.dom.script.java","com.lucanet.common.dom.script.elements","com.lucanet.common.dom.script.elements.classes","com.lucanet.common.dom.base.node","com.lucanet.lisa.widgets.textarea","com.lucanet.lisa.widgets.util"))
+                            if(nativeModule.getPackages().contains(pkg))access.put(pkg,target);
+                        if(!access.isEmpty())instrumentation.redefineModule(nativeModule,java.util.Set.of(),access,access,java.util.Set.of(),java.util.Map.of());
+                    }
+                }
+                JavaEditorAssist.ensureInstalled(()->JavaEditorAssist.isCurrent(this));
+                EnhancementLog.info("JAVA_EDITOR_HOOK_READY: "+name);
+                // Container/focus listeners attach to the original document; no script bytecode is changed.
+                return null;
+            }
             if(SceneDialogStyle.CREATOR.equals(name)) {
                 if(!NativeBridge.isDesktopClient(loader))return null;
                 byte[] transformed=SceneDialogTransformer.transform(bytes);

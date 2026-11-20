@@ -33,10 +33,19 @@ public final class AssembleAgent {
                             asm.getInputStream(entry).readAllBytes(), remapper);
                 }
             }
-            out.putNextEntry(new JarEntry("META-INF/ASM-LICENSE.txt"));
-            out.write(Files.readAllBytes(Path.of(args[3])));
-            out.closeEntry();
+            try(var licenses=Files.list(Path.of(args[3]).getParent())) {
+                for(Path license:licenses.filter(p->p.toString().endsWith(".txt")).toArray(Path[]::new))
+                    resource(out,"META-INF/"+license.getFileName(),license);
+            }
+            Path resources=Path.of(args[5]);
+            try(var assets=Files.walk(resources)) {
+                for(Path path:assets.filter(Files::isRegularFile).toArray(Path[]::new))
+                    resource(out,resources.relativize(path).toString().replace('\\','/'),path);
+            }
         }
+    }
+    private static void resource(JarOutputStream out,String name,Path path)throws Exception {
+        out.putNextEntry(new JarEntry(name));out.write(Files.readAllBytes(path));out.closeEntry();
     }
     private static void add(JarOutputStream out, String name, byte[] bytes, Remapper remapper) throws Exception {
         ClassWriter writer = new ClassWriter(0);

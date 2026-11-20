@@ -80,6 +80,28 @@ internal sealed class FeatureSettingsStore {
     internal void SaveNativeSceneDialogFrame(bool enabled) {
         SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"nativeSceneDialogFrame",enabled ? "true" : "false"}});
     }
+    internal bool LoadJavaEditorAssist() {
+        if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
+            string line=source.Trim();
+            if(line.StartsWith("javaEditorAssist=",StringComparison.Ordinal))return line.Substring("javaEditorAssist=".Length).Trim().Equals("true",StringComparison.OrdinalIgnoreCase);
+        }
+        return true;
+    }
+    internal void SaveJavaEditorAssist(bool enabled) {
+        SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"javaEditorAssist",enabled ? "true" : "false"}});
+    }
+    internal int LoadJavaCompletionFontSize() {
+        if(File.Exists(path))foreach(string source in File.ReadAllLines(path,Encoding.UTF8)) {
+            string line=source.Trim();int size;
+            if(line.StartsWith("javaCompletionFontSize=",StringComparison.Ordinal))
+                return int.TryParse(line.Substring("javaCompletionFontSize=".Length).Trim(),out size)&&size>=12&&size<=30?size:18;
+        }
+        return 18;
+    }
+    internal void SaveJavaCompletionFontSize(int size) {
+        if(size<12||size>30)throw new ArgumentOutOfRangeException("javaCompletionFontSize");
+        SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"javaCompletionFontSize",size.ToString(System.Globalization.CultureInfo.InvariantCulture)}});
+    }
     internal ScriptFeatureSettings LoadScript() {
         bool hidden = true; string shortcut = "ALT+R";
         if (File.Exists(path)) foreach (string source in File.ReadAllLines(path, Encoding.UTF8)) {

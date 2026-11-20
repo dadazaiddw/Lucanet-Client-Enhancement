@@ -22,6 +22,12 @@ if ($LASTEXITCODE -ne 0) { throw 'Test compilation failed.' }
 $archive = Join-Path $testRoot 'archive'
 & $java '-Djava.awt.headless=true' "-Dlucanet.exit.logDir=$logs" -cp "$classes;$agent" cn.lucanet.enhancement.exit.TempFileArchiverTest (Join-Path $testRoot 'archive scenarios')
 if ($LASTEXITCODE -ne 0) { throw 'Archive behavior tests failed.' }
+& $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaIntelligenceTest
+if ($LASTEXITCODE -ne 0) { throw 'Java semantic analysis tests failed.' }
+& $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaCompletionPopupTest (Join-Path $testRoot 'java-icons.png')
+if ($LASTEXITCODE -ne 0) { throw 'Java completion icon/font tests failed.' }
+& $java '-Djava.awt.headless=true' "-Dlucanet.enhancement.features=$testRoot\editor-features.properties" -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaEditorAssistTest
+if ($LASTEXITCODE -ne 0) { throw 'Java editor behavior tests failed.' }
 # 使用 Windows 文件独占句柄，验证一个文件被占用不会阻断其他文件的归档。
 $lockedRoot = Join-Path $testRoot 'locked files'
 New-Item -ItemType Directory -Path $lockedRoot -Force | Out-Null

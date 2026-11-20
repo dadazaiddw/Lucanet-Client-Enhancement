@@ -1,0 +1,348 @@
+package cn.lucanet.enhancement.exit;
+
+import java.awt.*;
+import java.awt.event.*;
+import java.beans.*;
+import java.lang.ref.WeakReference;
+import java.net.*;
+import java.util.*;
+import java.util.List;
+import java.util.concurrent.*;
+import java.util.function.*;
+import javax.swing.*;
+import javax.swing.event.*;
+import javax.swing.text.*;
+
+/** Java-only, reversible overlay on Lucanet's existing document and undo manager. */
+final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
+    static final String SOURCE="com/lucanet/common/dom/script/java/JavaSourceCodeEditor";
+    static final String ACTIVE="cn.lucanet.enhancement.javaEditor.v1";
+    private final Map<JTextComponent,Binding> bindings=new WeakHashMap<>();
+    private final ExecutorService analysis;
+    private final ScheduledExecutorService settings;
+    private final BooleanSupplier current;
+    private boolean enabled=true,closed;
+    private int completionFontSize=18;
+    private int settingsTicks;
+    private URLClassLoader compilerLoader;
+    private Function<Map<String,Object>,List<Map<String,String>>> engine;
+
+    static boolean isCurrent(java.lang.instrument.ClassFileTransformer transformer) {
+        try {
+            // Protocol 1 keeps this field package-private in the bootstrap loader. Reading our own
+            // stable bridge avoids adding a new bridge method that older installed agents lack.
+            java.lang.reflect.Field field=LiveBridge.class.getDeclaredField("current");field.setAccessible(true);
+            AgentModule module=(AgentModule)field.get(null);return module!=null&&module.transformer()==transformer;
+        }catch(ReflectiveOperationException failure){return false;}
+    }
+
+    static void ensureInstalled(BooleanSupplier current) {
+        EventQueue.invokeLater(()->{
+            if(!current.getAsBoolean())return;
+            Object previous=UIManager.get(ACTIVE);
+            if(previous instanceof JavaEditorAssist && !((JavaEditorAssist)previous).closed)return;
+            if(previous instanceof AutoCloseable)try{((AutoCloseable)previous).close();}catch(Exception failure){EnhancementLog.error("JAVA_EDITOR_CLEANUP_FAILED",failure);}
+            JavaEditorAssist controller=new JavaEditorAssist(current);UIManager.put(ACTIVE,controller);
+            for(Window window:Window.getWindows())if(window.isDisplayable())controller.scan(window);
+        });
+    }
+    JavaEditorAssist(BooleanSupplier current) {
+        this.current=current;
+        analysis=Executors.newSingleThreadExecutor(task->daemon(task,"client-enhancement-java-analysis"));
+        settings=Executors.newSingleThreadScheduledExecutor(task->daemon(task,"client-enhancement-java-settings"));
+        Toolkit.getDefaultToolkit().addAWTEventListener(this,AWTEvent.CONTAINER_EVENT_MASK|AWTEvent.WINDOW_EVENT_MASK|AWTEvent.FOCUS_EVENT_MASK);
+        settings.scheduleWithFixedDelay(()->{
+            boolean next=FeatureSettings.javaEditorAssist();
+            int nextFont=FeatureSettings.javaCompletionFontSize();
+            EventQueue.invokeLater(()->{
+                if(closed)return;
+                if(!current.getAsBoolean()){close();return;}
+                if(enabled!=next||completionFontSize!=nextFont){enabled=next;completionFontSize=nextFont;for(Binding b:new ArrayList<>(bindings.values()))b.refresh();}
+                if(enabled&&++settingsTicks%3==0)for(Binding b:new ArrayList<>(bindings.values()))b.checkImports();
+            });
+        },0,250,TimeUnit.MILLISECONDS);
+    }
+    private static Thread daemon(Runnable task,String name) {Thread t=new Thread(task,name);t.setDaemon(true);t.setContextClassLoader(null);return t;}
+    @Override public void eventDispatched(AWTEvent event) {
+        if(closed)return;
+        if(event instanceof ContainerEvent) {
+            Component child=((ContainerEvent)event).getChild();
+            EventQueue.invokeLater(()->{
+                if(closed)return;
+                if(event.getID()==ContainerEvent.COMPONENT_ADDED)scan(child);
+                else for(Binding binding:new ArrayList<>(bindings.values())) {
+                    JTextComponent text=binding.text.get();if(text==null||!isJavaEditor(text)||!text.isDisplayable())binding.close();
+                }
+            });
+        } else if(event instanceof FocusEvent && event.getID()==FocusEvent.FOCUS_GAINED)scan(((FocusEvent)event).getComponent());
+        else if(event instanceof WindowEvent && event.getID()==WindowEvent.WINDOW_CLOSED) {
+            Window window=((WindowEvent)event).getWindow();
+            for(Binding binding:new ArrayList<>(bindings.values())) {
+                JTextComponent text=binding.text.get();if(text==null||SwingUtilities.getWindowAncestor(text)==window)binding.close();
+            }
+        }
+    }
+    static boolean isJavaEditor(JTextComponent text) {
+        for(Component c=text.getParent();c!=null;c=c.getParent())
+            if(c.getClass().getName().equals(SOURCE.replace('/','.')))return true;
+        return false;
+    }
+    /** A displayed signature is not a persistent editing mode: argument expressions take priority. */
+    static String automaticOperation(String source,int caret,boolean followingParameters) {
+        if(caret<=0||caret>source.length())return null;
+        boolean code=JavaEditing.codeAt(source,caret);char last=source.charAt(caret-1);
+        if(code&&(Character.isJavaIdentifierPart(last)||last=='.'))return "complete";
+        int before=caret;while(before>0&&Character.isWhitespace(source.charAt(before-1)))before--;
+        if(before==0)return null;last=source.charAt(before-1);
+        if(code&&(last=='('||last==','))return "parameters";
+        return followingParameters&&last!=';'&&last!='{'&&last!='}'?"parameters":null;
+    }
+    void scan(Component component) {
+        if(closed)return;
+        if(component instanceof JTextComponent && isJavaEditor((JTextComponent)component)) {
+            JTextComponent text=(JTextComponent)component;
+            if(!bindings.containsKey(text)) {Binding binding=new Binding(text);bindings.put(text,binding);binding.refresh();}
+        }
+        if(component instanceof Container)for(Component child:((Container)component).getComponents())scan(child);
+    }
+    @SuppressWarnings("unchecked") private List<Map<String,String>> analyze(Map<String,Object> request) throws Exception {
+        if(engine==null) {
+            URL jar=JavaEditorAssist.class.getProtectionDomain().getCodeSource().getLocation();
+            compilerLoader=new URLClassLoader(new URL[]{jar},ClassLoader.getPlatformClassLoader()) {
+                @Override protected synchronized Class<?> loadClass(String name,boolean resolve)throws ClassNotFoundException {
+                    if(name.equals("cn.lucanet.enhancement.exit.JavaIntelligence")||name.startsWith("cn.lucanet.enhancement.exit.JavaIntelligence$")) {
+                        Class<?> type=findLoadedClass(name);if(type==null)type=findClass(name);if(resolve)resolveClass(type);return type;
+                    }
+                    return super.loadClass(name,resolve);
+                }
+            };
+            engine=(Function<Map<String,Object>,List<Map<String,String>>>)Class.forName("cn.lucanet.enhancement.exit.JavaIntelligence",true,compilerLoader).getConstructor().newInstance();
+        }
+        return engine.apply(request);
+    }
+    @Override public void close() {
+        if(!EventQueue.isDispatchThread()){EventQueue.invokeLater(this::close);return;}
+        if(closed)return;closed=true;settings.shutdownNow();
+        Toolkit.getDefaultToolkit().removeAWTEventListener(this);
+        for(Binding binding:new ArrayList<>(bindings.values()))binding.close();bindings.clear();
+        if(UIManager.get(ACTIVE)==this)UIManager.put(ACTIVE,null);
+        analysis.execute(()->{try{if(engine instanceof AutoCloseable)((AutoCloseable)engine).close();if(compilerLoader!=null)compilerLoader.close();}catch(Exception ignored){}});
+        analysis.shutdown();
+    }
+
+    final class Binding implements DocumentListener,PropertyChangeListener {
+        final WeakReference<JTextComponent> text;
+        final javax.swing.Timer delay;
+        final javax.swing.Timer importDelay;
+        WeakReference<Object> observedCode=new WeakReference<>(null);
+        Map<String,List<String>> observedImports;
+        boolean organizing;
+        final DefaultListModel<Map<String,String>> model=new DefaultListModel<>();
+        final JList<Map<String,String>> list=new JList<>(model);
+        final JavaCompletionPopup popup=new JavaCompletionPopup(list);
+        final Map<String,Boolean> nativeOptions=new LinkedHashMap<>();
+        InputMap originalInput,overlayInput;ActionMap originalActions,overlayActions;
+        Document document;boolean installed,editing,detached;int generation;
+        Future<?> pending;int replaceStart,replaceEnd;String snapshot;boolean parameterPopup;String lookupPrefix="";
+        final FocusListener focus=new FocusAdapter(){@Override public void focusLost(FocusEvent e){dismiss();}};
+        final CaretListener caret=e->caretChanged();
+        private void caretChanged(){if(!editing){generation++;hide();if(parameterPopup&&installed)delay.restart();}}
+        final KeyEventDispatcher popupKeys;
+        private KeyEventDispatcher createPopupKeys(){return event->{
+            JTextComponent target=text.get();
+            if(!installed||target==null||event.getComponent()!=target||!popup.isVisible()||event.getID()!=KeyEvent.KEY_PRESSED)return false;
+            int code=event.getKeyCode();
+            if(code==KeyEvent.VK_ESCAPE){dismiss();event.consume();return true;}
+            if(parameterPopup||list.getSelectedValue()!=null&&"info".equals(list.getSelectedValue().get("kind")))return false;
+            if(code==KeyEvent.VK_DOWN||code==KeyEvent.VK_UP){int next=list.getSelectedIndex()+(code==KeyEvent.VK_DOWN?1:-1);list.setSelectedIndex(Math.max(0,Math.min(model.size()-1,next)));list.ensureIndexIsVisible(list.getSelectedIndex());event.consume();return true;}
+            if(code==KeyEvent.VK_ENTER||code==KeyEvent.VK_TAB){accept();event.consume();return true;}
+            return false;
+        };}
+        Binding(JTextComponent editor) {
+            text=new WeakReference<>(editor);popupKeys=createPopupKeys();delay=new javax.swing.Timer(280,e->requestAutomatic());delay.setRepeats(false);
+            importDelay=new javax.swing.Timer(400,e->organizeImports(false));importDelay.setRepeats(false);
+            list.addMouseListener(new MouseAdapter(){@Override public void mouseClicked(MouseEvent e){if(e.getClickCount()==2&&!parameterPopup)accept();}});
+            editor.addPropertyChangeListener(this);
+        }
+        private void requestAutomatic() {
+            JTextComponent target=text.get();if(target==null)return;
+            String operation=automaticOperation(target.getText(),target.getCaretPosition(),parameterPopup);
+            if(operation==null){parameterPopup=false;hide();return;}
+            request(operation,false);
+        }
+        void refresh() {
+            JTextComponent target=text.get();if(target==null){close();return;}
+            boolean active=enabled&&!closed&&!detached&&target.isEditable()&&target.isEnabled();
+            if(active&&!installed)install(target);else if(!active&&installed)uninstall(target);
+            popup.fontSize(completionFontSize);
+        }
+        void checkImports() {
+            JTextComponent target=text.get();if(!installed||editing||organizing||target==null||!target.isShowing())return;
+            try {
+                JavaEditorContext context=new JavaEditorContext(target);
+                if(context.code==null||!Boolean.TRUE.equals(JavaEditorContext.call(context.editor,"isUsable")))return;
+                Map<String,List<String>> state=context.importState();
+                if(context.code==observedCode.get()&&state.equals(observedImports))return;
+                observedCode=new WeakReference<>(context.code);observedImports=state;
+                Map<String,Integer> counts=new HashMap<>();
+                for(String name:state.get("editableImports")) {
+                    if(name.startsWith("static ")||name.endsWith(".*")||name.lastIndexOf('.')<0)continue;
+                    String pkg=name.substring(0,name.lastIndexOf('.'));
+                    if(counts.merge(pkg,1,Integer::sum)>=2||state.get("importNames").contains(pkg+".*")){importDelay.restart();return;}
+                }
+            }catch(Throwable unavailable){/* Native editors may be between selections; the next snapshot retries. */}
+        }
+        private void install(JTextComponent target) {
+            installed=true;originalInput=target.getInputMap();originalActions=target.getActionMap();
+            overlayInput=new InputMap();overlayInput.setParent(originalInput);overlayActions=new ActionMap();overlayActions.setParent(originalActions);
+            target.setInputMap(JComponent.WHEN_FOCUSED,overlayInput);target.setActionMap(overlayActions);
+            bind("control SPACE",()->request("complete",true));bind("control P",()->request("parameters",true));bind("alt ENTER",()->request("import",true));
+            bind("control D",()->edit(JavaEditing::duplicate));bind("control Y",()->edit(JavaEditing::deleteLines));
+            bind("control SLASH",()->edit(JavaEditing::comment));bind("control shift SLASH",()->edit(JavaEditing::blockComment));
+            bind("alt shift UP",()->edit(t->JavaEditing.move(t,-1)));bind("alt shift DOWN",()->edit(t->JavaEditing.move(t,1)));
+            bind("shift ENTER",()->edit(JavaEditing::newLine));bind("control shift J",()->edit(JavaEditing::join));
+            bind("control alt I",()->edit(JavaEditing::indent));
+            bind("control shift Z",()->originalAction(target,KeyStroke.getKeyStroke("control Y")));
+            bind("control alt O",()->organizeImports(true));
+            bind("TAB",()->{
+                String before=target.getText().substring(0,target.getCaretPosition());
+                if(before.matches("(?s).*\\.(new|sout|return|nn|null|if|not)$")&&JavaEditing.codeAt(target.getText(),target.getCaretPosition())){request("postfix",true);return;}
+                final boolean[] expanded={false};edit(t->expanded[0]=JavaEditing.template(t));
+                if(!expanded[0])originalAction(target,KeyStroke.getKeyStroke("TAB"));
+            });
+            option(target,"CloseCurlyBraces","getCloseCurlyBraces");option(target,"BracketMatchingEnabled","isBracketMatchingEnabled");
+            option(target,"PaintMatchedBracketPair","getPaintMatchedBracketPair");option(target,"MarkOccurrences","getMarkOccurrences");
+            document=target.getDocument();document.addDocumentListener(this);target.addFocusListener(focus);target.addCaretListener(caret);
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(popupKeys);
+        }
+        private void bind(String key,Runnable action) {
+            String id=ACTIVE+"."+key;overlayInput.put(KeyStroke.getKeyStroke(key),id);
+            overlayActions.put(id,new AbstractAction(){@Override public void actionPerformed(ActionEvent e){if(installed&&!closed)action.run();}});
+        }
+        private void originalAction(JTextComponent target,KeyStroke key) {Object id=originalInput.get(key);Action action=id==null?null:originalActions.get(id);if(action!=null)action.actionPerformed(new ActionEvent(target,ActionEvent.ACTION_PERFORMED,""));}
+        private void option(JTextComponent target,String property,String getter) {
+            try{boolean old=(Boolean)JavaEditorContext.call(target,getter);nativeOptions.put(property,old);JavaEditorContext.call(target,"set"+property,true);}catch(Throwable ignored){}
+        }
+        private void edit(Consumer<JTextComponent> change) {
+            JTextComponent target=text.get();if(target==null||!target.isEditable()||!target.isEnabled())return;
+            dismiss();editing=true;
+            try{JavaEditing.atomic(target,()->change.accept(target));}finally{editing=false;}
+        }
+        @Override public void insertUpdate(DocumentEvent e){changed();}
+        @Override public void removeUpdate(DocumentEvent e){changed();}
+        @Override public void changedUpdate(DocumentEvent e){}
+        private void changed(){generation++;hide();if(!editing&&installed)delay.restart();}
+        @Override public void propertyChange(PropertyChangeEvent e) {
+            if(e.getPropertyName().equals("document")&&installed){uninstall(text.get());refresh();}
+            else if(e.getPropertyName().equals("editable")||e.getPropertyName().equals("enabled"))refresh();
+        }
+        void request(String operation,boolean manual) {
+            request(operation,manual,0);
+        }
+        private void request(String operation,boolean manual,int retry) {
+            JTextComponent target=text.get();delay.stop();
+            if(!installed||target==null||(!manual&&!target.isFocusOwner()))return;
+            int at=target.getCaretPosition();String source=target.getText();
+            if(!operation.equals("parameters")&&!JavaEditing.codeAt(source,at)){if(manual)hint("注释和字符串中不提供 Java 补全");return;}
+            if(!operation.equals("parameters"))parameterPopup=false;
+            if(!manual && operation.equals("complete") && at>0 && (source.charAt(at-1)=='('||source.charAt(at-1)==',')){request("parameters",false);return;}
+            if(!manual&&operation.equals("complete")&&(at==0||!(Character.isJavaIdentifierPart(source.charAt(at-1))||source.charAt(at-1)=='.')))return;
+            try {
+                JavaEditorContext captured=new JavaEditorContext(target);
+                Map<String,Object> input=captured.request(target,operation);
+                int end=at;
+                if(operation.equals("import")){while(end<source.length()&&Character.isJavaIdentifierPart(source.charAt(end)))end++;input.put("caret",end);}
+                int begin=end;while(begin>0&&Character.isJavaIdentifierPart(source.charAt(begin-1)))begin--;
+                int replaceTo=end;while(replaceTo<source.length()&&Character.isJavaIdentifierPart(source.charAt(replaceTo)))replaceTo++;
+                final int start=begin,finish=replaceTo,token=++generation,originalCaret=at;
+                final String prefix=source.substring(begin,end);
+                if(pending!=null)pending.cancel(false);
+                pending=analysis.submit(()->{
+                    try {
+                        List<Map<String,String>> values=new ArrayList<>(analyze(input));
+                        if(operation.equals("postfix"))values.removeIf(value->!value.get("kind").equals("postfix")||!value.get("name").equals(prefix));
+                        EventQueue.invokeLater(()->{
+                            JTextComponent editor=text.get();
+                            if(!installed||closed||generation!=token||editor==null||!editor.getText().equals(source)||editor.getCaretPosition()!=originalCaret)return;
+                            try{JavaEditorContext now=new JavaEditorContext(editor);Map<String,Object> current=now.request(editor,operation);
+                                if(now.code!=captured.code||now.part!=captured.part)return;
+                                if(!Objects.equals(input.get("source"),current.get("source"))||!Objects.equals(input.get("sources"),current.get("sources"))){if(retry<2)request(operation,manual,retry+1);return;}
+                            }catch(Throwable changed){return;}
+                            if(values.isEmpty()){parameterPopup=false;if(manual)hint(operation.equals("parameters")?"当前调用暂无可解析的参数信息":"没有匹配项，请继续输入或检查导包");return;}
+                            replaceStart=start;replaceEnd=finish;snapshot=source;lookupPrefix=prefix;parameterPopup=operation.equals("parameters");
+                            show(values);
+                            if(operation.equals("postfix")&&values.size()==1)accept();
+                        });
+                    }catch(Throwable error){EventQueue.invokeLater(()->{if(installed&&generation==token)failure(error,manual);});}
+                });
+            }catch(Throwable error){failure(error,manual);}
+        }
+        void show(List<Map<String,String>> values) {
+            JTextComponent target=text.get();if(target==null||!target.isShowing())return;
+            model.clear();for(Map<String,String> value:values)model.addElement(value);list.setSelectedIndex(0);
+            popup.setInvoker(target);popup.content(lookupPrefix,parameterPopup);
+            try{java.awt.geom.Rectangle2D rect=target.modelToView2D(target.getCaretPosition());if(rect!=null)popup.show(target,(int)rect.getX(),(int)rect.getMaxY());}catch(BadLocationException ignored){}
+        }
+        void accept() {
+            JTextComponent target=text.get();Map<String,String> item=list.getSelectedValue();
+            if(target==null||item==null||parameterPopup||"info".equals(item.get("kind"))||!target.getText().equals(snapshot)){hide();return;}
+            try {
+                String insert=item.get("insert");String qualified=item.get("import");
+                int cursor=Integer.parseInt(item.get("caret"));
+                if(qualified!=null&&!qualified.isEmpty()) {
+                    int oldCaret=target.getCaretPosition();String imported=new JavaEditorContext(target).importType(qualified);
+                    if(item.containsKey("typeName")){insert="new "+imported+"()";cursor=imported.length()+5;}else{insert=imported;cursor=insert.length();}
+                    // Native model listeners may refresh the document. Only apply against the same content.
+                    if(!target.getText().equals(snapshot)){hint("导包已更新，请重新触发补全");return;}
+                    target.setCaretPosition(Math.min(oldCaret,target.getDocument().getLength()));
+                }
+                if(item.get("kind").equals("method")&&replaceEnd<snapshot.length()&&snapshot.charAt(replaceEnd)=='('){insert=item.get("name");cursor=insert.length();}
+                final int start=Integer.parseInt(item.getOrDefault("replaceStart",String.valueOf(replaceStart)));
+                int finish=Integer.parseInt(item.getOrDefault("replaceEnd",String.valueOf(replaceEnd)));
+                if(item.get("kind").equals("postfix")&&(insert.endsWith(";")||"true".equals(item.get("statement")))&&finish<snapshot.length()&&snapshot.charAt(finish)==';')finish++;
+                final String value=insert;final int position=cursor,end=finish;
+                edit(editor->{JavaEditing.replace(editor,start,end,value);editor.setCaretPosition(start+position);});
+                if(item.get("kind").equals("method")&&position<value.length())request("parameters",false);
+                if(item.get("kind").equals("postfix")&&item.get("name").equals("new"))request("parameters",true);
+                if(qualified!=null&&!qualified.isEmpty())organizeImports(false);
+            }catch(Throwable error){failure(error,true);}
+        }
+        @SuppressWarnings("unchecked") private void organizeImports(boolean manual) {
+            importDelay.stop();JTextComponent target=text.get();if(!installed||target==null||organizing)return;
+            try {
+                JavaEditorContext context=new JavaEditorContext(target);
+                if(context.sourceEditor!=null)JavaEditorContext.call(context.sourceEditor,"commitChanges");
+                Map<String,Object> input=context.request(target,"organize");String content=target.getText();
+                if(((List<?>)input.getOrDefault("importNames",Collections.emptyList())).isEmpty())return;
+                organizing=true;
+                analysis.submit(()->{try {
+                    List<Map<String,String>> values=analyze(input);List<String> requested=new ArrayList<>();for(Map<String,String> row:values)requested.add(row.get("import"));
+                    EventQueue.invokeLater(()->{
+                        try{if(!installed||closed||text.get()!=target)return;
+                            if(!target.getText().equals(content)){observedImports=null;return;}
+                            JavaEditorContext now=new JavaEditorContext(target);if(now.code!=context.code){observedImports=null;return;}
+                            Map<String,Object> current=now.request(target,"organize");if(!Objects.equals(input.get("source"),current.get("source"))||!Objects.equals(input.get("sources"),current.get("sources"))){observedImports=null;return;}
+                            now.applyImports((List<String>)input.get("importNames"),requested);if(manual)hint("导包已整理");
+                        }catch(Throwable error){failure(error,manual);}finally{organizing=false;}
+                    });
+                }catch(Throwable error){EventQueue.invokeLater(()->{organizing=false;if(installed)failure(error,manual);});}});
+            }catch(Throwable error){organizing=false;failure(error,manual);}
+        }
+        private void hint(String message){parameterPopup=false;lookupPrefix="";Map<String,String> row=new HashMap<>();row.put("label",message);row.put("kind","info");show(Collections.singletonList(row));}
+        private void failure(Throwable error,boolean manual){EnhancementLog.error("JAVA_EDITOR_ASSIST_UNAVAILABLE",error);if(manual)hint("编码辅助暂不可用；原编辑与保存仍可使用");}
+        void hide(){popup.setVisible(false);}
+        void dismiss(){parameterPopup=false;generation++;delay.stop();if(pending!=null)pending.cancel(false);hide();}
+        private void uninstall(JTextComponent target) {
+            installed=false;dismiss();importDelay.stop();observedImports=null;observedCode.clear();
+            KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(popupKeys);
+            if(document!=null){document.removeDocumentListener(this);document=null;}
+            if(target==null)return;
+            target.removeFocusListener(focus);target.removeCaretListener(caret);
+            if(target.getInputMap()==overlayInput)target.setInputMap(JComponent.WHEN_FOCUSED,originalInput);
+            if(target.getActionMap()==overlayActions)target.setActionMap(originalActions);
+            for(Map.Entry<String,Boolean> option:nativeOptions.entrySet())try{JavaEditorContext.call(target,"set"+option.getKey(),option.getValue());}catch(Throwable ignored){}
+            nativeOptions.clear();
+        }
+        void close(){if(detached)return;detached=true;JTextComponent target=text.get();if(installed)uninstall(target);if(target!=null){target.removePropertyChangeListener(this);bindings.remove(target);}}
+    }
+}

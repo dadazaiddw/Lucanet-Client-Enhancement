@@ -19,6 +19,13 @@ internal static class ScriptSettingsTests {
             var hidden=(CheckBox)form.Controls.Find("hideScriptStart",true).Single();
             var doubleClick=(CheckBox)form.Controls.Find("scriptDoubleClick",true).Single();
             var sceneFrame=(CheckBox)form.Controls.Find("nativeSceneDialogFrame",true).Single();
+            var editor=(CheckBox)form.Controls.Find("javaEditorAssist",true).Single();
+            var font=(NumericUpDown)form.Controls.Find("javaCompletionFontSize",true).Single();
+            Check(font.Value==18 && store.Features.LoadJavaCompletionFontSize()==18,"lookup font default 18");
+            Check(form.Controls.Find("javaEditorShortcutHint",true).Length==0,"shortcut description removed");
+            font.Value=24;Check(new FeatureSettingsStore(features).LoadJavaCompletionFontSize()==24,"lookup font saved and reloaded immediately");
+            Check(editor.Checked && store.Features.LoadJavaEditorAssist(),"Java editor default enabled");
+            editor.Checked=false;Check(!store.Features.LoadJavaEditorAssist(),"Java editor persists immediately");
             Check(sceneFrame.Checked && store.Features.LoadNativeSceneDialogFrame(),"scene frame default enabled");
             sceneFrame.Checked=false;Check(!store.Features.LoadNativeSceneDialogFrame(),"scene frame persists immediately");
             var shortcut=(ShortcutBox)form.Controls.Find("scriptRunShortcut",true).Single();
@@ -40,15 +47,27 @@ internal static class ScriptSettingsTests {
             Check(store.Features.LoadLinksInNewWindow() && File.ReadAllText(features).Contains("futureFeature=keep"),"script save preserves navigation and future settings");
             Check(!store.Features.LoadScriptDoubleClick(),"other settings preserve disabled double-click");
             Check(!store.Features.LoadNativeSceneDialogFrame(),"other settings preserve disabled scene frame");
+            Check(!store.Features.LoadJavaEditorAssist(),"other settings preserve disabled Java editor");
+            Check(store.Features.LoadJavaCompletionFontSize()==24,"other settings preserve lookup font");
             var reset=(Button)form.Controls.Find("resetFeatureSettings",true).Single();
             typeof(Button).GetMethod("OnClick",BindingFlags.NonPublic|BindingFlags.Instance).Invoke(reset,new object[]{EventArgs.Empty});
             Check(hidden.Checked && store.Features.LoadScript().HideStart && store.Features.LoadScript().Shortcut=="ALT+R","restore defaults enables hiding");
             Check(doubleClick.Checked && store.Features.LoadScriptDoubleClick(),"restore defaults enables double-click");
             Check(sceneFrame.Checked && store.Features.LoadNativeSceneDialogFrame(),"restore defaults enables scene frame");
+            Check(editor.Checked && store.Features.LoadJavaEditorAssist(),"restore defaults enables Java editor");
+            Check(font.Value==18&&store.Features.LoadJavaCompletionFontSize()==18,"restore default font");
+            using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
+                font.Value=26;Check(font.Value==18,"failed font save restores displayed value");
+            }
+            Check(messages==1&&store.Features.LoadJavaCompletionFontSize()==18,"failed font save preserves configuration");messages=0;
             using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
                 sceneFrame.Checked=false;Check(sceneFrame.Checked,"failed save restores the displayed scene setting");
             }
             Check(messages==1 && store.Features.LoadNativeSceneDialogFrame(),"failed save reports once and preserves configuration");messages=0;
+            using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
+                editor.Checked=false;Check(editor.Checked,"failed Java editor save restores displayed value");
+            }
+            Check(messages==1 && store.Features.LoadJavaEditorAssist(),"failed Java editor save preserves configuration");messages=0;
             Check(messages==0,"normal edits do not show dialogs");form.Close();
         }
         foreach(string invalid in new[]{"R","SHIFT+R","CTRL+CTRL+R","ALT+F4","CTRL+ENTER","WIN+R"}) {
@@ -57,6 +76,9 @@ internal static class ScriptSettingsTests {
         Check(ScriptShortcutSetting.Normalize("shift + ctrl + F12")=="CTRL+SHIFT+F12","normalized modifier order and function key");
         File.WriteAllText(features,"hideScriptStart=true\nscriptRunShortcut=bad\n");
         Check(!store.Features.LoadScript().HideStart && store.Features.LoadScript().Shortcut=="ALT+R","invalid config keeps button accessible");
+        foreach(string invalid in new[]{"0","31","bad"}) {
+            File.WriteAllText(features,"javaCompletionFontSize="+invalid+"\n");Check(store.Features.LoadJavaCompletionFontSize()==18,"invalid font falls back to 18");
+        }
         Console.WriteLine("PASS: script hide/defaults/key capture, live persistence, safe validation and preservation of other feature settings");
     }
     private static void Check(bool condition,string text){if(!condition)throw new Exception(text);}

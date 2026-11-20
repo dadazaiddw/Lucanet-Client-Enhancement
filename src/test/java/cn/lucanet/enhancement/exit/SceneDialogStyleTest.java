@@ -20,6 +20,7 @@ public final class SceneDialogStyleTest {
             write(false);Thread.sleep(400);
             SceneDialogCreator disabled=edt(()->new SceneDialogCreator(false));
             check(edt(()->disabled.dialog.isUndecorated() && disabled.title.isVisible()),"disabled on creation");
+            check(edt(()->disabled.dialog.getTitle().isEmpty()),"scene caption empty with original frame");
             show(disabled);write(true);await(()->!disabled.dialog.isUndecorated(),"enable on existing window");
             edt(()->{disabled.close.setEnabled(false);disabled.dialog.dispatchEvent(new WindowEvent(disabled.dialog,WindowEvent.WINDOW_CLOSING));return null;});
             check(disabled.cancels==0,"disabled original close is respected");
@@ -27,11 +28,15 @@ public final class SceneDialogStyleTest {
             check(disabled.cancels==1 && disabled.dialog.disposes==1,"native close routes original action exactly once");
             verifyReplacement();
             SceneDialogCreator cleanup=edt(()->new SceneDialogCreator(false));show(cleanup);
+            edt(()->{cleanup.dialog.setTitle("latest scene title");return null;});
+            check(edt(()->cleanup.dialog.getTitle().isEmpty()),"later scene title remains empty");
             edt(()->{((AutoCloseable)UIManager.get(ACTIVE)).close();return null;});
             check(edt(()->cleanup.dialog.isUndecorated() && cleanup.title.isVisible() && cleanup.resize.getBorder()!=null),"controller cleanup restores original style");
+            check(edt(()->cleanup.dialog.getTitle().equals("latest scene title")),"controller cleanup restores latest original caption");
+            check(edt(()->cleanup.dialog.getPropertyChangeListeners("title").length==0),"caption listener removed on cleanup");
             check(cleanup.cancels==0 && cleanup.dialog.disposes==0,"cleanup does not close scene");
             edt(()->{cleanup.close.doClick(0);return null;});
-            System.out.println("PASS: scene hook before show, modeless/modal live toggles, input/selection/bounds retained, no dispose/show/cancel on toggles, owned child deferral, unrelated dialog isolation and original close action");
+            System.out.println("PASS: blank scene captions before show and after live title/frame changes, modeless/modal live toggles, input/selection/bounds retained, no dispose/show/cancel on toggles, owned child deferral, unrelated dialog isolation and original close action");
         } finally {
             edt(()->{Object controller=UIManager.get(ACTIVE);if(controller instanceof AutoCloseable)((AutoCloseable)controller).close();for(Window w:Window.getWindows())w.dispose();return null;});
         }
@@ -61,19 +66,24 @@ public final class SceneDialogStyleTest {
         JFrame owner=edt(()->{JFrame f=new JFrame();f.setBounds(-20000,-20000,100,100);f.setVisible(true);return f;});
         SceneDialogCreator scene=edt(()->new SceneDialogCreator(owner,modal));
         check(edt(()->!scene.dialog.isUndecorated() && !scene.title.isVisible() && scene.resize.getBorder()==null),"default native before first show");
+        check(edt(()->scene.dialog.getTitle().isEmpty()),"empty native caption before first show");
         show(scene);
         Rectangle bounds=edt(()->scene.dialog.getBounds());
         edt(()->{scene.input.setText("keep 未保存 input");scene.input.select(2,6);return null;});
-        JDialog unrelated=edt(()->{JDialog d=new JDialog();d.setUndecorated(true);d.setBounds(-19000,-19000,80,80);d.setVisible(true);return d;});
+        JDialog unrelated=edt(()->{JDialog d=new JDialog();d.setTitle("other dialog");d.setUndecorated(true);d.setBounds(-19000,-19000,80,80);d.setVisible(true);return d;});
         int[] closed={0};edt(()->{scene.dialog.addWindowListener(new WindowAdapter(){public void windowClosed(WindowEvent e){closed[0]++;}});return null;});
         for(int i=0;i<6;i++) {
             boolean enabled=i%2!=0;write(enabled);
             await(()->scene.dialog.isUndecorated()!=enabled,"live style change");
+            edt(()->{scene.dialog.setTitle("updated scene title");return null;});
+            check(edt(()->scene.dialog.getTitle().isEmpty()),"caption stays empty after live title update");
+            edt(()->{scene.dialog.setTitle("");return null;});
+            check(edt(()->scene.dialog.getTitle().isEmpty()),"empty title never falls back to owner caption");
             check(edt(()->scene.dialog.isVisible() && scene.dialog.isModal()==modal && scene.dialog.getBounds().equals(bounds)
                     && scene.input.getText().equals("keep 未保存 input") && scene.input.getSelectionStart()==2 && scene.input.getSelectionEnd()==6
                     && scene.title.isVisible()!=enabled && (scene.resize.getBorder()==null)==enabled),"state and appearance retained");
             check(scene.cancels==0 && scene.dialog.disposes==0 && scene.dialog.shows==1 && closed[0]==0,"no scene lifecycle triggered");
-            check(edt(unrelated::isUndecorated),"unrelated dialog unchanged");
+            check(edt(()->unrelated.isUndecorated() && unrelated.getTitle().equals("other dialog")),"unrelated dialog unchanged");
             if(modal && Boolean.getBoolean("fixture.checkNativeModality"))edt(()->{
                 java.lang.reflect.Field peer=Component.class.getDeclaredField("peer");peer.setAccessible(true);
                 java.lang.reflect.Field blocker=Class.forName("sun.awt.windows.WWindowPeer").getDeclaredField("modalBlocker");blocker.setAccessible(true);

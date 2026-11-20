@@ -28,7 +28,14 @@ foreach($name in $expected){
 }
 $runtimeJar=Join-Path $runtime 'dist\client-enhancement.jar'
 $jar=[IO.Compression.ZipFile]::OpenRead($runtimeJar)
-try{Assert-Package ($null -ne $jar.GetEntry('META-INF/ASM-LICENSE.txt')) 'ASM license retained inside JAR'}finally{$jar.Dispose()}
+try{
+    foreach($name in @('META-INF/ASM-LICENSE.txt','META-INF/IDEA-ICONS-LICENSE.txt','META-INF/IDEA-ICONS-NOTICE.txt')) {
+        Assert-Package ($null -ne $jar.GetEntry($name)) ('third party license retained: '+$name)
+    }
+    foreach($icon in @('class','interface','field','method','variable','parameter','template','staticMark','finalMark')) {
+        Assert-Package ($null -ne $jar.GetEntry('cn/lucanet/enhancement/exit/idea-icons/'+$icon+'.svg')) ('official icon bundled: '+$icon)
+    }
+}finally{$jar.Dispose()}
 
 # 独立探针从解压包加载 GUI 和更新器，只用 .NET 框架，不依赖工程源码或 README。
 $probeSource=Join-Path $work 'RuntimePackageProbe.cs'

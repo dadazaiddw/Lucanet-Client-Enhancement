@@ -2,6 +2,11 @@ package cn.lucanet.enhancement.exit;
 
 import java.awt.*;
 import java.awt.event.*;
+import java.beans.PropertyChangeEvent;
+import java.beans.PropertyChangeListener;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.ref.WeakReference;
 import java.lang.instrument.Instrumentation;
 import java.lang.reflect.Method;
@@ -23,6 +28,7 @@ final class SceneDialogStyle implements Consumer<Object>, AWTEventListener, Auto
     private static final String DISPOSAL_GUARD=ACTIVE+".disposalGuard";
     private static SceneDialogStyle instance;
     private static Method getModalBlocker,setModalBlocked;
+    private static MethodHandle setDialogTitle;
     private final Map<JDialog,Binding> bindings=new WeakHashMap<>();
     private final ScheduledExecutorService watcher;
     private final AtomicBoolean queued=new AtomicBoolean();
@@ -38,6 +44,10 @@ final class SceneDialogStyle implements Consumer<Object>, AWTEventListener, Auto
                 Map.of("java.awt",java.util.Set.of(SceneDialogStyle.class.getModule())),java.util.Set.of(),Map.of());
         Method get=Window.class.getDeclaredMethod("getModalBlocker");
         Method set=Window.class.getDeclaredMethod("setModalBlocked",Dialog.class,boolean.class,boolean.class);
+        // Lucanet 的 setTitle("") 会回退为所属窗口标题。仅清空 AWT 显示文字，保留原场景标题数据。
+        MethodHandle title=MethodHandles.privateLookupIn(Dialog.class,MethodHandles.lookup())
+                .findSpecial(Dialog.class,"setTitle",MethodType.methodType(void.class,String.class),Dialog.class);
+        setDialogTitle=title;
         get.setAccessible(true);set.setAccessible(true);getModalBlocker=get;setModalBlocked=set;
     }
 
@@ -102,7 +112,8 @@ final class SceneDialogStyle implements Consumer<Object>, AWTEventListener, Auto
             if(!dialog.isUndecorated() || !title.isVisible())return;
             installDisposalGuard(dialog);
             Binding binding=new Binding(dialog,title,(JComponent)title.getParent(),close);
-            bindings.put(dialog,binding);hasBindings=true;dialog.addWindowListener(binding);binding.apply(enabled);
+            bindings.put(dialog,binding);hasBindings=true;dialog.addWindowListener(binding);
+            dialog.addPropertyChangeListener("title",binding);binding.clearTitle();binding.apply(enabled);
         } catch(RuntimeException failure){EnhancementLog.error("SCENE_STYLE_REGISTER_FAILED",failure);}
         finally{scanning=false;}
     }
@@ -123,16 +134,26 @@ final class SceneDialogStyle implements Consumer<Object>, AWTEventListener, Auto
         if(bindings.isEmpty())watcher.shutdownNow();
         if(UIManager.get(ACTIVE)==this)UIManager.put(ACTIVE,null);
     }
-    private final class Binding extends WindowAdapter {
+    private final class Binding extends WindowAdapter implements PropertyChangeListener {
         final WeakReference<JDialog> window;
         final WeakReference<JComponent> title,resize;
         final WeakReference<AbstractButton> close;
         final Border border;
         final boolean resizable;
+        String originalTitle;
         boolean applied,changing,failed;
         Binding(JDialog dialog,JComponent title,JComponent resize,AbstractButton close) {
             this.window=new WeakReference<>(dialog);this.title=new WeakReference<>(title);this.resize=new WeakReference<>(resize);this.close=new WeakReference<>(close);
             border=resize.getBorder();resizable=dialog.isResizable();
+            originalTitle=dialog.getTitle();
+        }
+        void clearTitle() {
+            JDialog dialog=window.get();
+            if(dialog!=null && !"".equals(dialog.getTitle()))setWindowTitle(dialog,"");
+        }
+        @Override public void propertyChange(PropertyChangeEvent event) {
+            if("".equals(event.getNewValue()))return;
+            originalTitle=(String)event.getNewValue();clearTitle();
         }
         void apply(boolean next) {
             if(next==applied || changing || failed)return;
@@ -193,10 +214,16 @@ final class SceneDialogStyle implements Consumer<Object>, AWTEventListener, Auto
                     // 子窗口仍打开或恢复失败时保留原关闭动作，稍后再恢复。
                     if(applied)return;
                 }
-                dialog.removeWindowListener(this);bindings.remove(dialog);
+                dialog.removeWindowListener(this);dialog.removePropertyChangeListener("title",this);
+                setWindowTitle(dialog,originalTitle);bindings.remove(dialog);
                 hasBindings=!bindings.isEmpty();
             }
         }
+    }
+    private static void setWindowTitle(JDialog dialog,String title) {
+        try{setDialogTitle.invokeExact((Dialog)dialog,title);}
+        catch(RuntimeException | Error failure){throw failure;}
+        catch(Throwable failure){throw new IllegalStateException("Cannot update scene caption",failure);}
     }
     private static boolean hasVisibleOwnedWindow(Window window) {
         for(Window child:window.getOwnedWindows())if(child.isDisplayable() && (child.isVisible() || hasVisibleOwnedWindow(child)))return true;

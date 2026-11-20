@@ -17,6 +17,7 @@ public final class SceneDialogWidgetsProbe {
             Class.forName(CREATOR,false,ClassLoader.getSystemClassLoader());edt(()->null);
             edt(()->{build();return null;});
             if(dialog.isUndecorated() || title.isVisible() || resize.getBorder()!=null)throw new AssertionError("Real widgets not styled");
+            if(!dialog.getTitle().isEmpty())throw new AssertionError("Scene caption not cleared before show");
             edt(()->{dialog.setVisible(true);return null;});
             Path settings=Path.of(System.getProperty("lucanet.enhancement.features"));
             for(boolean enabled:new boolean[]{false,true,false,true}) {
@@ -26,6 +27,8 @@ public final class SceneDialogWidgetsProbe {
                 if(edt(()->dialog.isUndecorated()==enabled || title.isVisible()==enabled || !input.getText().equals("keep actual layout input")))throw new AssertionError("Real widget live switch failed");
                 if(enabled && edt(()->input.getY()>2))throw new AssertionError("Hidden original title still consumes layout space: "+input.getBounds());
                 if(cancels!=0)throw new AssertionError("Switch ran original action");
+                edt(()->{dialog.setTitle("updated scene caption");return null;});
+                if(!edt(()->dialog.getTitle().isEmpty()))throw new AssertionError("Live scene caption not cleared");
             }
             edt(()->{dialog.dispatchEvent(new WindowEvent(dialog,WindowEvent.WINDOW_CLOSING));return null;});
             if(cancels!=1 || dialog.isDisplayable())throw new AssertionError("Close did not use original button");
@@ -36,7 +39,7 @@ public final class SceneDialogWidgetsProbe {
     }
     @SuppressWarnings("unchecked") static void build()throws Exception {
         UIManager.put("LNButtonUI","com.lucanet.lisa.widgets.button.LNButtonUI");
-        dialog=new JDialog((Window)null);dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);dialog.setUndecorated(true);
+        dialog=new JDialog((Window)null);dialog.setTitle("scene caption");dialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);dialog.setUndecorated(true);
         root=(JComponent)Class.forName("com.lucanet.lisa.widgets.LNPanel").getConstructor().newInstance();
         title=(JComponent)Class.forName("com.lucanet.lisa.widgets.LNPanel").getConstructor().newInstance();
         Constructor<?> constructor=Class.forName(CREATOR+"$c").getDeclaredConstructor();constructor.setAccessible(true);close=(AbstractButton)constructor.newInstance();
