@@ -55,7 +55,7 @@ final class FeatureSettings {
         catch (Exception failure) { return false; }
     }
     static boolean customJavaTypes() {
-        try { return Boolean.parseBoolean(load().getProperty("customJavaTypes", "true").trim()); }
+        try { return Boolean.parseBoolean(load().getProperty("customJavaTypes", "false").trim()); }
         catch(Exception unavailable){return false;}
     }
     static final int DEFAULT_JAVA_FONT_SIZE=20;

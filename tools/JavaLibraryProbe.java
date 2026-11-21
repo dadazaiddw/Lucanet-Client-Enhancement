@@ -1,6 +1,9 @@
 import java.io.File;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -30,15 +33,33 @@ final class JavaLibraryProbe {
         }
         JavaLibraryProbe fixture=new JavaLibraryProbe();
         fixture.files=List.of(jar.toFile());
-        Object provider=Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},(proxy,method,args)->{
+        installProvider(script,type,(proxy,method,args)->{
             if(method.getName().equals("getAdditionalLibrariesForCompilation"))return fixture.files;
             if(method.getName().equals("getAdditionalLibrariesClassLoader"))return args[0];
             throw new UnsupportedOperationException(method.getName());
         });
+        return fixture;
+    }
+
+    /** Uses Lucanet's runtime library loader without connecting to a database. */
+    static Object attachForExecution(Object script,Path jar)throws Exception {
+        Class<?> type=script.getClass().getMethod("getAdditionalLibrariesProvider").getReturnType();
+        Class<?> loader=Class.forName("ln.base_util.classloader.CustomerProgramFileClassLoader");
+        Method getLoader=loader.getMethod("getLoader",ClassLoader.class);
+        loader.getMethod("addURLToAllLoaders",URL.class).invoke(null,jar.toUri().toURL());
+        return installProvider(script,type,(proxy,method,args)->{
+            if(method.getName().equals("getAdditionalLibrariesForCompilation"))return List.of(jar.toFile());
+            if(method.getName().equals("getAdditionalLibrariesClassLoader"))return getLoader.invoke(null,args[0]);
+            throw new UnsupportedOperationException(method.getName());
+        });
+    }
+
+    private static Object installProvider(Object script,Class<?> type,InvocationHandler handler)throws IllegalAccessException {
+        Object provider=Proxy.newProxyInstance(type.getClassLoader(),new Class<?>[]{type},handler);
         for(Field field:script.getClass().getDeclaredFields())if(field.getType()==type){
             field.setAccessible(true);
             field.set(script,provider);
-            return fixture;
+            return provider;
         }
         throw new AssertionError("Could not attach the Script's library provider");
     }

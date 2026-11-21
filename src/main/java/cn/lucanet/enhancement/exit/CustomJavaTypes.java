@@ -2,7 +2,7 @@ package cn.lucanet.enhancement.exit;
 
 import java.awt.*;
 import java.awt.event.*;
-import java.net.*;
+import java.net.URL;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
@@ -19,8 +19,6 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
     private final BooleanSupplier current;
     private final Map<Object,Editor> editors=new IdentityHashMap<>();
     private final ExecutorService validation=Executors.newSingleThreadExecutor(task->{Thread thread=new Thread(task,"client-enhancement-type-validation");thread.setDaemon(true);thread.setContextClassLoader(null);return thread;});
-    private URLClassLoader compilerLoader;
-    private Function<String,Map<String,String>> parser;
     private final javax.swing.Timer lifetime;
     private boolean closed;
     private JDialog chooser;
@@ -78,7 +76,9 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
             Object table=CustomJavaModel.call(event,"getTreeTableContext"),cell=CustomJavaModel.call(table,"getInteractedCell");
             if(cell==null)return false;Object node=CustomJavaModel.call(cell,"getNode");
             if(!CustomJavaModel.isClass(node)||node!=CustomJavaModel.call(section,"getSelectedDOMNode"))return false;
-            open(section,CustomJavaModel.call(node,"getParent"),node,CustomJavaModel.source(node));return true;
+            CustomJavaModel.Version version=CustomJavaModel.version(node);
+            if(!version.editableAsSource())return false;
+            open(section,CustomJavaModel.call(node,"getParent"),node,version,null);return true;
         }catch(Throwable failure){EnhancementLog.error("CUSTOM_JAVA_OPEN_FAILED",failure);return false;}
     }
     static boolean usable(Object section)throws Throwable {
@@ -108,7 +108,7 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
                 String value=name.getText().trim();if(!validName(value))throw new IllegalArgumentException("请输入有效的 Java 类型名称，不含包名或 .java 后缀。");
                 CustomJavaModel.checkName(parent,null,value);
                 String source=CustomJavaModel.template(parent.getClass().getClassLoader(),value,list.getSelectedValue());
-                open(section,parent,null,source);dialog.dispose();
+                open(section,parent,null,null,source);dialog.dispose();
             }catch(Throwable failure){message.setForeground(new Color(180,45,45));message.setText(message(failure));}
         };
         name.addActionListener(e->create.run());list.addMouseListener(new MouseAdapter(){@Override public void mouseClicked(MouseEvent e){if(e.getClickCount()==2)create.run();}});
@@ -133,24 +133,19 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
         for(int i=Character.charCount(name.codePointAt(0));i<name.length();){int ch=name.codePointAt(i);if(!Character.isJavaIdentifierPart(ch))return false;i+=Character.charCount(ch);}
         return !Set.of("abstract","assert","boolean","break","byte","case","catch","char","class","const","continue","default","do","double","else","enum","extends","final","finally","float","for","goto","if","implements","import","instanceof","int","interface","long","native","new","package","private","protected","public","return","short","static","strictfp","super","switch","synchronized","this","throw","throws","transient","try","void","volatile","while","true","false","null","_","var","yield","record","sealed","permits").contains(name);
     }
-    void open(Object section,Object parent,Object node,String source)throws Throwable {
+    private void open(Object section,Object parent,Object node,CustomJavaModel.Version version,String template)throws Throwable {
         Editor existing=node==null?null:editors.get(node);
-        if(existing!=null){existing.frame.setExtendedState(existing.frame.getExtendedState()&~Frame.ICONIFIED);existing.frame.toFront();existing.text.requestFocusInWindow();return;}
-        Editor editor=new Editor(section,parent,node,source);editors.put(editor.key,editor);editor.frame.setVisible(true);editor.text.requestFocusInWindow();
-    }
-    @SuppressWarnings("unchecked") private Map<String,String> parse(String source)throws Exception {
-        if(parser==null){
-            compilerLoader=new URLClassLoader(new URL[]{CustomJavaTypes.class.getProtectionDomain().getCodeSource().getLocation()},ClassLoader.getPlatformClassLoader()) {
-                @Override protected synchronized Class<?> loadClass(String name,boolean resolve)throws ClassNotFoundException {
-                    if(name.equals("cn.lucanet.enhancement.exit.CustomJavaSource")||name.startsWith("cn.lucanet.enhancement.exit.CustomJavaSource$")) {
-                        Class<?> type=findLoadedClass(name);if(type==null)type=findClass(name);if(resolve)resolveClass(type);return type;
-                    }
-                    return super.loadClass(name,resolve);
-                }
-            };
-            parser=(Function<String,Map<String,String>>)Class.forName("cn.lucanet.enhancement.exit.CustomJavaSource",true,compilerLoader).getConstructor().newInstance();
+        if(existing!=null){
+            existing.refresh(version);
+            existing.frame.setExtendedState(existing.frame.getExtendedState()&~Frame.ICONIFIED);
+            existing.frame.toFront();
+            existing.text.requestFocusInWindow();
+            return;
         }
-        return parser.apply(source);
+        Editor editor=new Editor(section,parent,node,version,version==null?template:version.source());
+        editors.put(editor.key,editor);
+        editor.frame.setVisible(true);
+        editor.text.requestFocusInWindow();
     }
     static void bind(JComponent component,String key,Runnable action){String id=HANDLER+"."+key;component.getInputMap().put(KeyStroke.getKeyStroke(key),id);component.getActionMap().put(id,new AbstractAction(){public void actionPerformed(ActionEvent event){action.run();}});}
     private static String message(Throwable error){while(error instanceof java.lang.reflect.InvocationTargetException&&error.getCause()!=null)error=error.getCause();String message=error.getMessage();return message==null?error.getClass().getSimpleName():message;}
@@ -158,18 +153,23 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
     @Override public void close(){
         if(closed)return;closed=true;lifetime.stop();KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(this);if(chooser!=null)chooser.dispose();
         // Existing editors keep their source and save handlers during a module swap. Never discard drafts.
-        for(Editor editor:editors.values())editor.status.setText("增强模块已更新；当前窗口仍可保存，重新打开后使用新版本。");
-        if(editors.isEmpty())release();if(UIManager.get(HANDLER)==this)UIManager.put(HANDLER,null);
+        for(Editor editor:editors.values())editor.savedStatus.append("增强模块已更新，重新打开后使用新版本。").show(editor.status);
+        if(editors.isEmpty())validation.shutdown();if(UIManager.get(HANDLER)==this)UIManager.put(HANDLER,null);
     }
-    private void release(){validation.shutdown();try{if(compilerLoader!=null)compilerLoader.close();}catch(Exception ignored){}}
 
     final class Editor {
+        private static final String CONFLICT="Class 已在其他位置修改。请复制当前草稿，重新打开类后合并。";
         final Object section,parent,context,originalRoot;Object node,key;
         final JFrame frame;final JTextComponent text;final JComponent gutter;
-        final JLabel status=new JLabel(),tab=new JLabel();final JButton saveButton=new JButton("保存  Ctrl+S");
+        final CustomJavaModel.StatusText status=new CustomJavaModel.StatusText();
+        final JLabel tab=new JLabel();final JButton saveButton=new JButton("保存  Ctrl+S");
         String saved;boolean saving,disposed;Boolean entrancesEnabled;
-        Editor(Object section,Object parent,Object node,String source)throws Throwable {
+        private CustomJavaModel.Version version;
+        private CustomJavaModel.Status savedStatus;
+        Editor(Object section,Object parent,Object node,CustomJavaModel.Version version,String source)throws Throwable {
             this.section=section;this.parent=parent;this.node=node;key=node==null?new Object():node;context=CustomJavaModel.call(section,"getUIContext");originalRoot=CustomJavaModel.call(section,"getCurrentDOMRoot");saved=source;
+            this.version=version;
+            savedStatus=version==null?new CustomJavaModel.Status("关闭窗口自动保存到 Class。",false):version.status();
             Window owner=SwingUtilities.getWindowAncestor((Component)section);
             GraphicsConfiguration screen=owner==null?GraphicsEnvironment.getLocalGraphicsEnvironment().getDefaultScreenDevice().getDefaultConfiguration():owner.getGraphicsConfiguration();
             frame=new JFrame(typeName(source),screen);frame.setName("customJavaEditor");frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);frame.setIconImages(WINDOW_ICONS);
@@ -191,17 +191,20 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
             scroll.setBorder(BorderFactory.createMatteBorder(1,0,1,0,new Color(217,220,227)));
             JavaSourceDiagnostics diagnostics=new JavaSourceDiagnostics(text);
             text.putClientProperty(JavaSourceDiagnostics.DISPLAY,diagnostics);
-            body.add(scroll);JPanel footer=new JPanel(new BorderLayout(12,0));footer.setBorder(BorderFactory.createEmptyBorder(8,12,8,12));footer.add(status);
+            body.add(scroll);
+            JPanel footer=new JPanel(new BorderLayout());
+            footer.add(diagnostics.component(),BorderLayout.NORTH);
+            status.setBorder(BorderFactory.createEmptyBorder(8,12,0,12));
+            footer.add(status,BorderLayout.CENTER);
             JPanel actions=new JPanel(new FlowLayout(FlowLayout.RIGHT,8,0));JButton discard=new JButton("放弃修改");
+            actions.setBorder(BorderFactory.createEmptyBorder(4,12,8,12));
             discard.addActionListener(e->{if(!saving&&(text.getText().equals(saved)||JOptionPane.showConfirmDialog(frame,"放弃当前窗口中的未保存修改？","放弃修改",JOptionPane.YES_NO_OPTION)==JOptionPane.YES_OPTION))frame.dispose();});
-            actions.add(discard);actions.add(saveButton);footer.add(actions,BorderLayout.EAST);
-            JPanel bottom=new JPanel(new BorderLayout());
-            bottom.add(diagnostics.component(),BorderLayout.NORTH);
-            bottom.add(footer,BorderLayout.SOUTH);
-            body.add(bottom,BorderLayout.SOUTH);
+            actions.add(discard);actions.add(saveButton);footer.add(actions,BorderLayout.SOUTH);
+            body.add(footer,BorderLayout.SOUTH);
+            status.setName("customJavaStatus");
             text.getDocument().addDocumentListener(new DocumentListener(){public void insertUpdate(DocumentEvent e){changed();}public void removeUpdate(DocumentEvent e){changed();}public void changedUpdate(DocumentEvent e){}private void changed(){boolean dirty=!text.getText().equals(saved);frame.setTitle(typeName(text.getText())+(dirty?" *":""));tab.setText("  "+typeName(text.getText())+".java"+(dirty?" *":""));}});
             bind(text,"control S",()->save(false));saveButton.addActionListener(e->save(false));
-            frame.addWindowListener(new WindowAdapter(){@Override public void windowClosing(WindowEvent event){save(true);}@Override public void windowClosed(WindowEvent event){disposed=true;text.putClientProperty(CustomJavaModel.DOCUMENT,null);editors.remove(key);if(closed&&editors.isEmpty())release();}});
+            frame.addWindowListener(new WindowAdapter(){@Override public void windowClosing(WindowEvent event){save(true);}@Override public void windowClosed(WindowEvent event){disposed=true;text.putClientProperty(CustomJavaModel.DOCUMENT,null);editors.remove(key);if(closed&&editors.isEmpty())validation.shutdown();}});
             frame.setContentPane(body);
             Rectangle available=new Rectangle(screen.getBounds());Insets reserved=Toolkit.getDefaultToolkit().getScreenInsets(screen);
             available.x+=reserved.left;available.y+=reserved.top;available.width-=reserved.left+reserved.right;available.height-=reserved.top+reserved.bottom;
@@ -222,25 +225,80 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
         void updateAvailability(boolean enabled){
             // Disabling the entry points must never erase or prevent saving an already-open draft.
             if(!saving&&!Boolean.valueOf(enabled).equals(entrancesEnabled)) {
-                entrancesEnabled=enabled;status.setText(enabled?"关闭窗口自动保存到 Class；脚本按原方式保存。":"自定义类型入口已关闭；当前草稿仍可保存。");
+                entrancesEnabled=enabled;
+                showSavedStatus();
             }
         }
+
+        private void showSavedStatus() {
+            CustomJavaModel.Status message=savedStatus;
+            if(Boolean.FALSE.equals(entrancesEnabled))message=message.append("自定义类型入口已关闭，当前草稿仍可保存。");
+            message.show(status);
+        }
+
+        void refresh(CustomJavaModel.Version latest)throws Throwable {
+            if(saving||latest.sameAs(version))return;
+            if(!latest.editableAsSource()||!text.getText().equals(saved)){
+                new CustomJavaModel.Status(CONFLICT,true).show(status);
+                return;
+            }
+            String updated=latest.source();
+            savedStatus=latest.status();
+            version=latest;
+            if(!saved.equals(updated)){
+                int caret=text.getCaretPosition();
+                saved=updated;
+                text.setText(updated);
+                text.setCaretPosition(Math.min(caret,text.getDocument().getLength()));
+                try{CustomJavaModel.call(text,"discardAllEdits");}catch(NoSuchMethodException ignored){}
+            }
+            showSavedStatus();
+        }
+
         void save(boolean closeAfter) {
-            if(saving||disposed)return;if(node!=null&&text.getText().equals(saved)){if(closeAfter)frame.dispose();return;}
-            final String source=text.getText();saving=true;saveButton.setEnabled(false);text.setEditable(false);status.setText("正在检查源码…");
+            if(saving||disposed)return;
+            final String draft=text.getText();
+            if(node!=null&&draft.equals(saved)) {
+                if(closeAfter){frame.dispose();return;}
+                try {
+                    CustomJavaModel.Version latest=CustomJavaModel.version(node);
+                    if(!latest.sameAs(version)) {
+                        refresh(latest);
+                        return;
+                    }
+                    if(!latest.needsResave()) {
+                        showSavedStatus();
+                        return;
+                    }
+                }catch(Throwable failure){failed(failure);return;}
+            }
+            saving=true;saveButton.setEnabled(false);text.setEditable(false);
+            new CustomJavaModel.Status("正在检查源码…",false).show(status);
             validation.submit(()->{
-                Map<String,String> descriptor;try{descriptor=parse(source);}catch(Throwable failure){EventQueue.invokeLater(()->failed(failure));return;}
+                Map<String,List<Map<String,String>>> parts=new HashMap<>();
+                Map<String,String> descriptor;
+                try{descriptor=CustomJavaModel.parse(draft,parts);}catch(Throwable failure){EventQueue.invokeLater(()->failed(failure));return;}
+                String source=descriptor.getOrDefault(CustomJavaSource.FORMATTED_SOURCE,draft);
                 EventQueue.invokeLater(()->{
                     try {
                         if(disposed)return;
                         if(!usable(section)||originalRoot!=CustomJavaModel.call(section,"getCurrentDOMRoot"))throw new IllegalStateException("脚本已关闭、切换或不可编辑。源码已保留，请返回原脚本后再保存。");
                         if(originalRoot!=CustomJavaModel.call(parent,"getDOMRootNode"))throw new IllegalStateException("目标 Class 文件夹已删除或移到其他脚本，当前源码仍保留。");
                         if(node!=null&&CustomJavaModel.call(node,"getParent")!=parent)throw new IllegalStateException("Class 节点已删除或移动，当前源码仍保留在窗口中。");
-                        if(node!=null&&!CustomJavaModel.source(node).equals(saved))throw new IllegalStateException("Class 已在其他位置修改。为避免覆盖，请先复制当前源码后重新打开。");
+                        if(node!=null&&!CustomJavaModel.version(node).sameAs(version))throw new IllegalStateException(CONFLICT);
                         boolean inserted=node==null;
-                        Object result=CustomJavaModel.save(node,parent,context,source,descriptor);editors.remove(key);node=result;key=result;editors.put(key,this);
+                        Object result=CustomJavaModel.save(node,parent,context,source,descriptor,parts);editors.remove(key);node=result;key=result;editors.put(key,this);
                         @SuppressWarnings("unchecked") Map<String,Object> document=(Map<String,Object>)text.getClientProperty(CustomJavaModel.DOCUMENT);document.put("owner",node);
-                        saved=source;frame.setTitle(descriptor.get("name"));tab.setText("  "+descriptor.get("name")+".java");saving=false;text.setEditable(true);saveButton.setEnabled(true);status.setText("已保存到 Class；请按原方式保存脚本。");
+                        saved=source;
+                        if(!text.getText().equals(source)) {
+                            int caret=text.getCaretPosition();
+                            JavaEditing.atomic(text,()->text.setText(source));
+                            text.setCaretPosition(Math.min(caret,text.getDocument().getLength()));
+                        }
+                        frame.setTitle(descriptor.get("name"));tab.setText("  "+descriptor.get("name")+".java");saving=false;text.setEditable(true);saveButton.setEnabled(true);
+                        version=CustomJavaModel.version(node);
+                        savedStatus=version.status();
+                        showSavedStatus();
                         try {
                             if(inserted)CustomJavaModel.call(section,"structureChanged",true);
                             CustomJavaModel.call(section,"refreshDetailPanel");
@@ -250,7 +308,7 @@ final class CustomJavaTypes implements KeyEventDispatcher,BiPredicate<Object,Obj
                 });
             });
         }
-        private void failed(Throwable failure){saving=false;text.setEditable(true);saveButton.setEnabled(true);status.setText("保存失败："+message(failure));EnhancementLog.error("CUSTOM_JAVA_SAVE_FAILED",failure);error(frame,failure);}
+        private void failed(Throwable failure){saving=false;text.setEditable(true);saveButton.setEnabled(true);new CustomJavaModel.Status("保存失败："+message(failure),true).show(status);EnhancementLog.error("CUSTOM_JAVA_SAVE_FAILED",failure);error(frame,failure);}
     }
     private static List<Image> loadIcons(){
         List<Image> icons=new ArrayList<>();

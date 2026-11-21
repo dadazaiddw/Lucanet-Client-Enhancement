@@ -207,33 +207,34 @@ final class JavaEditorContext {
         sorted.sort(Comparator.comparing(names::get));
         if(!sorted.equals(existing))try{call(folder,"sortChildren",sorted,context);}catch(NoSuchMethodException legacy){declared(folder,"a",sorted,context);}
     }
-    private Object importFolder() throws Throwable {
+    private Object importFolder() throws Throwable {return partFolder(code,"IMPORT","ImportPart");}
+    static Object partFolder(Object code,String kind,String partClass) throws Throwable {
         for(Field f:code.getClass().getDeclaredFields()) {
             if(!isFolder(f.getType()))continue;
             f.setAccessible(true);Object candidate=MethodHandles.lookup().unreflectGetter(f).invoke(code);
             if(candidate==null)continue;
-            try{if(String.valueOf(call(candidate,"getSupportedType")).equals("IMPORT"))return candidate;}
+            try{if(String.valueOf(call(candidate,"getSupportedType")).equals(kind))return candidate;}
             catch(NoSuchMethodException legacy){
-                // 2311 PartFolder is typed by Class<ImportPart>, before PartType was introduced.
+                // 2311 PartFolder is keyed by the part class rather than a PartType.
                 for(Class<?> folderType=candidate.getClass();folderType!=null;folderType=folderType.getSuperclass())for(Field type:folderType.getDeclaredFields())if(type.getType()==Class.class){
                     type.setAccessible(true);Object value=MethodHandles.lookup().unreflectGetter(type).invoke(candidate);
-                    if(value instanceof Class && ((Class<?>)value).getName().equals(PACKAGE+"ImportPart"))return candidate;
+                    if(value instanceof Class && ((Class<?>)value).getName().equals(PACKAGE+partClass))return candidate;
                 }
             }
         }
         return null;
     }
-    private static boolean isFolder(Class<?> type){for(Class<?> c=type;c!=null;c=c.getSuperclass())if(c.getName().equals(PACKAGE+"PartFolder"))return true;return false;}
-    private void collectImports(Object folder,List<Object> result) throws Throwable {
+    static boolean isFolder(Class<?> type){for(Class<?> c=type;c!=null;c=c.getSuperclass())if(c.getName().equals(PACKAGE+"PartFolder"))return true;return false;}
+    static void collectImports(Object folder,List<Object> result) throws Throwable {
         for(Object child:children(folder)) {
             if(child.getClass().getName().equals(PACKAGE+"ImportPart"))result.add(child);
             else if(isFolder(child.getClass()))collectImports(child,result);
         }
     }
-    private List<?> children(Object folder)throws Throwable {
+    static List<?> children(Object folder)throws Throwable {
         try{return (List<?>)call(folder,"getChildren");}catch(NoSuchMethodException legacy){return (List<?>)declared(folder,"a");}
     }
-    private static Object declared(Object target,String name,Object...args)throws Throwable {
+    static Object declared(Object target,String name,Object...args)throws Throwable {
         for(Class<?> owner=target.getClass();owner!=null;owner=owner.getSuperclass())for(Method method:owner.getDeclaredMethods()) {
             if(!method.getName().equals(name)||method.getParameterCount()!=args.length)continue;
             boolean match=true;for(int i=0;i<args.length;i++)if(args[i]!=null&&!method.getParameterTypes()[i].isInstance(args[i]))match=false;

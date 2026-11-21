@@ -159,7 +159,7 @@ internal sealed partial class EnhancementForm {
         var reset=NavigationButton("恢复默认设置","resetFeatureSettings");
         tips.SetToolTip(reset,"恢复功能及状态刷新默认值，保留更新设置。");
         reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
-            customJavaTypes.Checked=true;javaEditorAssist.Checked=true;javaCompletionFontSize.Value=FeatureSettingsStore.DefaultJavaFontSize;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
+            customJavaTypes.Checked=false;javaEditorAssist.Checked=true;javaCompletionFontSize.Value=FeatureSettingsStore.DefaultJavaFontSize;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
         sidebar.Controls.Add(reset,0,8);
     }
 
@@ -332,7 +332,7 @@ internal sealed partial class EnhancementForm {
         var stack=SettingsStack(codePage);
         var typesCard=SettingsCard("codeCustomTypesCard");
         AddSectionHeading(typesCard,"自定义 Java 类型","在 Class 文件夹按 Alt+Insert 新建类型，双击类型打开完整源码编辑窗口。");
-        bool enabled=true;
+        bool enabled=false;
         try{enabled=settingsStore.Features.LoadCustomJavaTypes();}catch(IOException){enabled=false;}catch(UnauthorizedAccessException){enabled=false;}
         customJavaTypes=new SettingToggle {Name="customJavaTypes",Checked=enabled,AccessibleName="自定义 Java 类型",Anchor=AnchorStyles.Right};
         customJavaTypes.CheckedChanged+=delegate {
@@ -341,7 +341,7 @@ internal sealed partial class EnhancementForm {
             catch(Exception error){restoringCustomJavaTypes=true;customJavaTypes.Checked=!customJavaTypes.Checked;restoringCustomJavaTypes=false;
                 ShowMessage("自定义类型设置未保存，已恢复原设置："+error.Message,MessageBoxIcon.Warning);}
         };
-        AddAutoRow(typesCard,SettingRow("启用自定义 Java 类型","默认开启，切换后立即生效；已打开窗口中的草稿仍可保存。",customJavaTypes));
+        AddAutoRow(typesCard,SettingRow("启用自定义 Java 类型","默认关闭。切换后立即生效，已打开窗口中的草稿仍可保存。",customJavaTypes));
         AddAutoRow(stack,typesCard);
         var editorCard=SettingsCard("featureJavaEditorCard");
         AddSectionHeading(editorCard,"Java 编码辅助","结合当前源代码与自定义 Class 补全代码、查看参数、自动导包及展开后缀模板。");

@@ -18,12 +18,14 @@ final class CustomJavaDetails {
             if(!CustomJavaModel.isClass(owner))return false;
             Map<String,String> data=CustomJavaModel.attributes(owner).get(CustomJavaModel.ATTRIBUTE);
             if(data==null||!data.containsKey("source"))return false;
-            JComponent panel=(JComponent)value;String source=data.get("source");
-            if(source.equals(panel.getClientProperty(SNAPSHOT)))return true;
-            panel.putClientProperty(SNAPSHOT,source);
-            DefaultMutableTreeNode root=new DefaultMutableTreeNode(data.getOrDefault("qualified",String.valueOf(CustomJavaModel.call(owner,"getJavaClassName"))));
+            CustomJavaModel.Version version=CustomJavaModel.version(code,data);
+            if(!version.editableAsSource())return false;
+            JComponent panel=(JComponent)value;
+            Object previous=panel.getClientProperty(SNAPSHOT);
+            if(previous instanceof CustomJavaModel.Version&&version.sameAs((CustomJavaModel.Version)previous))return true;
+            DefaultMutableTreeNode root=new DefaultMutableTreeNode(version.qualifiedName());
             List<DefaultMutableTreeNode> parents=new ArrayList<>();parents.add(root);
-            for(String line:data.getOrDefault("outline","").split("\n")) {
+            for(String line:version.outline().split("\n")) {
                 int tab=line.indexOf('\t');if(tab<0)continue;
                 int depth=Math.min(Integer.parseInt(line.substring(0,tab)),parents.size()-1);
                 DefaultMutableTreeNode row=new DefaultMutableTreeNode(line.substring(tab+1));parents.get(depth).add(row);
@@ -32,8 +34,12 @@ final class CustomJavaDetails {
             JTree tree=new JTree(root);tree.setName("customJavaStructure");tree.setFont(new Font(Font.MONOSPACED,Font.PLAIN,14));tree.setRowHeight(26);
             for(int row=0;row<tree.getRowCount();row++)tree.expandRow(row);
             JPanel content=new JPanel(new BorderLayout(0,10));content.setBorder(BorderFactory.createEmptyBorder(12,12,12,12));
-            content.add(new JLabel("完整源码类型 · 双击 Class 节点编辑；“源代码”页查看完整代码。"),BorderLayout.NORTH);
+            CustomJavaModel.StatusText status=new CustomJavaModel.StatusText();
+            status.setName("customJavaDetailsStatus");
+            version.status().show(status);
+            content.add(status,BorderLayout.NORTH);
             content.add(new JScrollPane(tree));panel.removeAll();panel.setLayout(new BorderLayout());panel.add(content);panel.revalidate();panel.repaint();
+            panel.putClientProperty(SNAPSHOT,version);
             return true;
         }catch(Throwable failure){EnhancementLog.error("CUSTOM_JAVA_DETAILS_FAILED",failure);return false;}
     }

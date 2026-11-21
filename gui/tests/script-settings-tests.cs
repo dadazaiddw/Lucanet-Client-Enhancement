@@ -24,8 +24,8 @@ internal static class ScriptSettingsTests {
             var code=form.Controls.Find("codeSettings",true).Single();
             var ui=form.Controls.Find("featureSettings",true).Single();
             Check(code.Contains(editor)&&code.Contains(types)&&!ui.Contains(editor),"code features live only on Code page");
-            Check(types.Checked&&store.Features.LoadCustomJavaTypes(),"custom types default enabled");
-            types.Checked=false;Check(!store.Features.LoadCustomJavaTypes(),"custom types persist immediately");
+            Check(!types.Checked&&!store.Features.LoadCustomJavaTypes(),"custom types default disabled");
+            types.Checked=true;Check(new FeatureSettingsStore(features).LoadCustomJavaTypes(),"custom types persist immediately");
             var font=(NumericUpDown)form.Controls.Find("javaCompletionFontSize",true).Single();
             Check(font.Value==20 && store.Features.LoadJavaCompletionFontSize()==20&&font.AccessibleName=="字号","code font label and default 20");
             Check(form.Controls.Find("javaEditorShortcutHint",true).Length==0,"shortcut description removed");
@@ -62,11 +62,11 @@ internal static class ScriptSettingsTests {
             Check(sceneFrame.Checked && store.Features.LoadNativeSceneDialogFrame(),"restore defaults enables scene frame");
             Check(editor.Checked && store.Features.LoadJavaEditorAssist(),"restore defaults enables Java editor");
             Check(font.Value==20&&store.Features.LoadJavaCompletionFontSize()==20,"restore default font");
-            Check(types.Checked&&store.Features.LoadCustomJavaTypes(),"restore defaults enables custom types");
+            Check(!types.Checked&&!store.Features.LoadCustomJavaTypes(),"restore defaults disables custom types");
             using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
-                types.Checked=false;Check(types.Checked,"failed custom types save restores toggle");
+                types.Checked=true;Check(!types.Checked,"failed custom types save restores toggle");
             }
-            Check(messages==1&&store.Features.LoadCustomJavaTypes(),"failed types save preserves configuration");messages=0;
+            Check(messages==1&&!store.Features.LoadCustomJavaTypes(),"failed types save preserves configuration");messages=0;
             using(var locked=File.Open(features,FileMode.Open,FileAccess.ReadWrite,FileShare.None)) {
                 font.Value=26;Check(font.Value==20,"failed font save restores displayed value");
             }

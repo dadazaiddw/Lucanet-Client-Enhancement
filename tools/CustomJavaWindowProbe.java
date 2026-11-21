@@ -62,17 +62,19 @@ public final class CustomJavaWindowProbe {
                 });
                 owner=new JFrame("Lucanet isolated editor test");owner.setContentPane(section);owner.setSize(640,460);owner.setVisible(true);
                 check(!(Boolean)call(controller,"dispatchKeyEvent",new KeyEvent(new JTextField(),KeyEvent.KEY_PRESSED,0,InputEvent.ALT_DOWN_MASK,KeyEvent.VK_INSERT,KeyEvent.CHAR_UNDEFINED)),"text inputs do not intercept Alt+Insert");
-                check((Boolean)call(controller,"createFromSelection",section),"Class folder opens chooser");return null;
+                check(!(Boolean)call(controller,"createFromSelection",section),"custom Java types default off with no settings file");
+                Files.writeString(features,"customJavaTypes=true\n");
+                check((Boolean)call(controller,"createFromSelection",section),"explicit enable opens chooser");return null;
             });
             await(()->((JTextField)find((Window)field(controller,"chooser"),"customJavaTypeName")).getFont().getSize()==20,"default chooser font");
-            Files.writeString(features,"javaCompletionFontSize=26\n");
+            Files.writeString(features,"customJavaTypes=true\njavaCompletionFontSize=26\n");
             await(()->find((Window)field(controller,"chooser"),"customJavaTypeKind").getFont().getSize()==26,"live chooser font");
             edt(()->{JDialog chooser=(JDialog)field(controller,"chooser");capture(chooser,"chooser-");
                 JTextField name=(JTextField)find(chooser,"customJavaTypeName");JList<?> kinds=(JList<?>)find(chooser,"customJavaTypeKind");
                 check(kinds.getModel().getSize()==7,"all type templates available");name.setText("WindowType");kinds.setSelectedIndex(1);name.postActionEvent();return null;});
             await(()->editors().size()==1,"editor opened from chooser");
             edt(()->{editor=editors().values().iterator().next();text=(JTextComponent)field(editor,"text");return null;});
-            String initial=edt(()->text.getText());check(initial.contains("public interface WindowType"),"selected interface template");
+            String initial=edt(()->text.getText());check(initial.contains("public interface WindowType")&&!initial.contains("End of Class"),"selected interface template has no native section comments");
             await(()->((Map<?,?>)field(assist,"bindings")).containsKey(text),"real native editor enhanced");
             edt(()->{binding=((Map<?,?>)field(assist,"bindings")).get(text);return null;});
             edt(()->{JFrame frame=(JFrame)field(editor,"frame");
@@ -84,7 +86,7 @@ public final class CustomJavaWindowProbe {
                 check(frame.getIconImages().size()==2&&frame.getIconImages().get(0).getWidth(null)==16,"editor has packaged Lucanet window icon");
                 check(text.getFont().getSize()==26&&find(frame,"customJavaDiagnostics").getFont().getSize()==26,"editor opens with configured font");
                 return null;});
-            Files.writeString(features,"javaCompletionFontSize=20\n");
+            Files.writeString(features,"customJavaTypes=true\njavaCompletionFontSize=20\n");
             await(()->text.getFont().getSize()==20&&((JList<?>)field(binding,"list")).getFont().getSize()==20,"live code and completion font");
             Thread.sleep(1700);check(edt(()->initial.equals(text.getText())),"native template imports unchanged after attachment");
             verifyLibraryCompletion();
@@ -113,22 +115,135 @@ public final class CustomJavaWindowProbe {
             edt(()->{section.selected=node;check(!((BiPredicate<Object,Object>)controller).test(new InteractionController(),new InteractionEvent(1)),"single click remains native");check(((BiPredicate<Object,Object>)controller).test(new InteractionController(),new InteractionEvent(4)),"double click opens source editor");return null;});
             await(()->editors().size()==1,"reopened");
             edt(()->{editor=editors().values().iterator().next();text=(JTextComponent)field(editor,"text");check(saved.equals(text.getText()),"reopen retains package/imports/body");
+                JTextComponent status=(JTextComponent)field(editor,"status");
+                check(status.getToolTipText().contains("额外应用程序库")&&red(status),"reopened client-only class shows a red server compatibility warning");
+                JFrame frame=(JFrame)field(editor,"frame");
+                Dimension originalSize=frame.getSize();
+                frame.setSize(frame.getMinimumSize().width,originalSize.height);
+                frame.validate();
+                Rectangle first=status.modelToView2D(0).getBounds();
+                Rectangle last=status.modelToView2D(status.getDocument().getLength()-1).getBounds();
+                check(last.y>first.y&&last.y+last.height<=status.getHeight(),"the full warning wraps at minimum window width");
+                frame.setSize(originalSize);
+                frame.validate();
+                capture(frame,"compatibility-");
                 ((BiPredicate<Object,Object>)controller).test(new InteractionController(),new InteractionEvent(4));check(editors().size()==1,"double click reuses existing editor");return null;});
-            edt(()->{section.root=new Object();text.setText(saved+"// pending edit\n");call(editor,"save",true);return null;});
-            await(()->((JLabel)field(editor,"status")).getText().startsWith("保存失败："),"script switch blocks closing save");
+            String implementsDraft="package com.lucanet.common.dom.script.rt;\n"
+                    +"public class WindowType implements Runnable {\n    public void run() {}\n}\n";
+            edt(()->{text.setText(implementsDraft);key("control S");return null;});
+            await(()->implementsDraft.equals(savedSource(node)),"Ctrl+S saves the class using implements");
+            edt(()->{
+                JTextComponent status=(JTextComponent)field(editor,"status");
+                check(red(status)&&status.getText().equals("原生客户端和服务器无法还原此类。使用了 implements。请使用额外应用程序库部署此类。")
+                                &&!status.getToolTipText().contains("保存脚本"),
+                        "Ctrl+S keeps the red, specific implements warning without a script-save prompt");
+                section.root=new Object();text.setText(implementsDraft+"// pending edit\n");call(editor,"save",true);return null;
+            });
+            await(()->((JTextComponent)field(editor,"status")).getText().startsWith("保存失败："),"script switch blocks closing save");
             edt(()->{for(Window window:Window.getWindows())if(window instanceof JDialog&&window.isVisible())window.dispose();
-                check(editors().size()==1&&text.getText().endsWith("// pending edit\n")&&saved.equals(call(node,"getSourceCode")),"failed save retains draft without overwriting model");section.root=script;return null;});
+                check(editors().size()==1&&text.getText().endsWith("// pending edit\n")&&implementsDraft.equals(savedSource(node)),"failed save retains draft without overwriting model");section.root=script;return null;});
             Files.writeString(features,"customJavaTypes=false\njavaEditorAssist=true\n");
-            await(()->((JLabel)field(editor,"status")).getText().contains("入口已关闭"),"live feature disable");
-            edt(()->{check(!((BiPredicate<Object,Object>)controller).test(new InteractionController(),new InteractionEvent(4)),"disabled double click passes through");section.selected=parent;check(!(Boolean)call(controller,"createFromSelection",section),"disabled Alt+Insert passes through");text.setText(saved+"// retained draft\n");((JFrame)field(editor,"frame")).dispatchEvent(new WindowEvent((JFrame)field(editor,"frame"),WindowEvent.WINDOW_CLOSING));return null;});
+            await(()->((JTextComponent)field(editor,"status")).getText().contains("入口已关闭"),"live feature disable");
+            edt(()->{check(!((BiPredicate<Object,Object>)controller).test(new InteractionController(),new InteractionEvent(4)),"disabled double click passes through");section.selected=parent;check(!(Boolean)call(controller,"createFromSelection",section),"disabled Alt+Insert passes through");text.setText(implementsDraft+"// retained draft\n");((JFrame)field(editor,"frame")).dispatchEvent(new WindowEvent((JFrame)field(editor,"frame"),WindowEvent.WINDOW_CLOSING));return null;});
             await(()->editors().isEmpty(),"disabled draft still saves");check(((String)call(node,"getSourceCode")).endsWith("// retained draft\n"),"disabled saving persists");
             Files.writeString(features,"customJavaTypes=true\njavaEditorAssist=true\n");Thread.sleep(500);
             edt(()->{section.editable=false;check(!(Boolean)call(controller,"createFromSelection",section),"read-only script disallows creation");section.editable=true;return null;});
             check(section.refreshed>=2,"native details refreshed after save");
+            verifyLegacySave();
+            verifyNativeChange();
             Files.writeString(evidence.resolveSibling("window-"+evidence.getFileName()+".txt"),"PASS production chooser, native widget completion/import/undo/parameters, close-save/reopen, single/double click, live toggle, read-only scope\n");
             System.out.println("PASS: custom Java chooser/editor, native completion and atomic undo, close-save/reopen, click scope and live switch");
         }catch(Throwable failure){failure.printStackTrace();System.exit(1);}finally{edt(()->{if(controller instanceof AutoCloseable)((AutoCloseable)controller).close();if(assist instanceof AutoCloseable)((AutoCloseable)assist).close();for(Window window:Window.getWindows())window.dispose();return null;});}
         System.exit(0);
+    }
+
+    @SuppressWarnings("unchecked")
+    static void verifyLegacySave()throws Exception {
+        String key="cn.lucanet.enhancement.javaSource.v1";
+        String head="package com.lucanet.common.dom.script.rt;\npublic class Test {\n";
+        String source=head+"  public int value() {\n    return 40 + 2;\n  }\n}\n";
+        String previous=head+"  // ==============================  Methods  ==============================\n"
+                +"  public int value() {\n"
+                +"    try {\n      CallStack.incAndCheckStackLevel(\"Test.value\");\n\n          return 40+2;\n\n    }\n"
+                +"    finally {\n      CallStack.decStackLevel();\n    }\n  }\n"
+                +"  // ===========================  End of Class  ===========================\n}\n";
+        Object legacy=edt(()->{
+            Object node=create("com.lucanet.common.dom.script.elements.classes.ClassElement");
+            Object code=staticCall(model,"javaCode",node);
+            call(code,"setJavaClassName","Test",null,false);
+            call(node,"setIdentifier",null,"Test");
+            Map<String,String> labels=new LinkedHashMap<>();
+            for(Object language:(List<?>)call(script,"getAvailableLanguages")) {
+                labels.put(String.valueOf(call(language,"getID")),"Test");
+            }
+            call(node,"setAttributeMap",null,Map.of("label",labels,key,Map.of("name","Test","source",previous)));
+            call(parent,"addChild",execution,node);
+            section.selected=node;
+            check(((BiPredicate<Object,Object>)controller).test(new InteractionController(),new InteractionEvent(4)),"legacy class opens");
+            editor=editors().get(node);text=(JTextComponent)field(editor,"text");
+            check(source.equals(text.getText()),"legacy source hides the native markers and guard and shows formatted statements");
+            check(previous.equals(savedSource(node)),"opening the editor leaves the stored legacy source untouched");
+            JTextComponent status=(JTextComponent)field(editor,"status");
+            check(red(status)&&status.getToolTipText().contains("Ctrl+S"),"unsynchronized legacy source is flagged in red");
+            key("control S");
+            return node;
+        });
+        await(()->Boolean.TRUE.equals(staticCall(model,"hasNativeParts",legacy)),"Ctrl+S syncs unchanged legacy class");
+        edt(()->{
+            Object code=staticCall(model,"javaCode",legacy);
+            check("return 40 + 2;".equals(call(call(code,"getMethodPart","value"),"getBody"))&&source.equals(text.getText()),
+                    "migration stores the unwrapped, formatted body and preserves the draft");
+            String generated=savedSource(legacy);
+            check(generated.contains("  Methods  ")&&generated.contains("  End of Class  ")
+                            &&generated.contains("CallStack.incAndCheckStackLevel(\"Test.value\");")&&generated.contains("CallStack.decStackLevel();"),
+                    "Ctrl+S immediately exposes generated sections and stack guards through the native source getter:\n"+generated);
+            JTextComponent status=(JTextComponent)field(editor,"status");
+            check(!red(status)&&status.getText().equals("已同步到原生 Class。")&&!status.getToolTipText().contains("保存脚本"),
+                    "Ctrl+S shows a normal sync status without a script-save prompt");
+            ((JFrame)field(editor,"frame")).dispose();
+            return null;
+        });
+        await(()->editors().isEmpty(),"legacy editor closes");
+    }
+
+    @SuppressWarnings("unchecked")
+    static void verifyNativeChange()throws Exception {
+        edt(()->{
+            Object node=section.selected;
+            Object code=staticCall(model,"javaCode",node);
+            Object method=call(code,"getMethodPart","value");
+            BiPredicate<Object,Object> open=(BiPredicate<Object,Object>)controller;
+            InteractionController interaction=new InteractionController();
+            check(open.test(interaction,new InteractionEvent(4)),"synced class opens");
+            editor=editors().get(node);text=(JTextComponent)field(editor,"text");
+            check(!red((JTextComponent)field(editor,"status")),"synced status uses the default text color");
+            call(method,"setBody","\n        int i=50+2;\n        try {\n            return i;\n        } finally {\n            ++i;\n        }\n\n",execution);
+            check(open.test(interaction,new InteractionEvent(4))&&text.getText().contains(" {\n        int i = 50 + 2;\n        try {\n            return i;\n        } finally {\n            ++i;\n        }\n    }"),
+                    "clean editor restores formatting after a native save and preserves the user's try/finally");
+            check(!text.getText().contains("CallStack"),"editable method body excludes the native compiler wrapper");
+            capture((JFrame)field(editor,"frame"),"native-method-edited-");
+
+            String draft=text.getText()+"// unsaved draft\n";
+            text.setText(draft);
+            call(method,"setBody","return 62;",execution);
+            check(open.test(interaction,new InteractionEvent(4))&&draft.equals(text.getText()),"refresh retains a conflicting draft");
+            check(red((JTextComponent)field(editor,"status")),"native update conflicting with draft is red");
+            key("control S");
+            return null;
+        });
+        await(()->((JTextComponent)field(editor,"status")).getText().contains("保存失败："),"draft save detects the native revision conflict");
+        edt(()->{
+            for(Window window:Window.getWindows())if(window instanceof JDialog&&window.isVisible())window.dispose();
+            check(text.getText().endsWith("// unsaved draft\n")&&savedSource(section.selected).contains("return 62;"),"conflict preserves both edits");
+            ((Window)field(editor,"frame")).dispose();
+            return null;
+        });
+        await(()->editors().isEmpty(),"conflict editor closes");
+    }
+
+    static boolean red(Component label) {
+        Color color=label.getForeground();
+        return color.getRed()>color.getGreen()*2&&color.getRed()>color.getBlue()*2;
     }
     static void verifyDiagnosticsAndOverrides()throws Exception {
         String missing="import java.util.Comparator;\npublic class WindowType implements Comparator<String> {\n    \n}\n";
@@ -169,16 +284,16 @@ public final class CustomJavaWindowProbe {
             });
             await(()->generationPicker()!=null,"field chooser for "+kind);
             if(kind.equals("constructor")){
-                Files.writeString(features,"javaCompletionFontSize=24\n");
+                Files.writeString(features,"customJavaTypes=true\njavaCompletionFontSize=24\n");
                 await(()->find(generationPicker(),"customJavaGenerationFields").getFont().getSize()==24,"field picker live font change");
-                Files.writeString(features,"javaCompletionFontSize=20\n");
+                Files.writeString(features,"customJavaTypes=true\njavaCompletionFontSize=20\n");
                 await(()->find(generationPicker(),"customJavaGenerationFields").getFont().getSize()==20,"field picker font restored");
             }
             if(kind.equals("equalsHashCode")){
-                Files.writeString(features,"javaCompletionFontSize=30\n");
+                Files.writeString(features,"customJavaTypes=true\njavaCompletionFontSize=30\n");
                 await(()->find(generationPicker(),"customJavaGenerationGetClass").getFont().getSize()==30,"wizard supports maximum live font");
                 edt(()->{capture(generationPicker(),"generate-equals-font30-");return null;});
-                Files.writeString(features,"javaCompletionFontSize=20\n");
+                Files.writeString(features,"customJavaTypes=true\njavaCompletionFontSize=20\n");
                 await(()->find(generationPicker(),"customJavaGenerationGetClass").getFont().getSize()==20,"wizard font restored");
             }
             edt(()->{
@@ -299,6 +414,7 @@ public final class CustomJavaWindowProbe {
         for(Field f:editorType.getDeclaredFields())if(f.getType()==code.getClass()){f.setAccessible(true);f.set(details,code);}
         call(details,"setUsable",true);check(Boolean.FALSE.equals(call(details,"isUsable")),"managed details cannot overwrite complete source");
         JTree tree=(JTree)find(details,"customJavaStructure");check(tree!=null,"native structure tab shows source outline");
+        check(red(find(details,"customJavaDetailsStatus")),"native detail tab uses the same red compatibility warning");
         StringBuilder rows=new StringBuilder();for(int row=0;row<tree.getRowCount();row++)rows.append(tree.getPathForRow(row)).append('\n');
         check(rows.toString().contains("first()")&&rows.toString().contains("run()"),"outline reflects saved generic class methods");
         call(details,"commitChanges");call(details,"javaCodeChanged");check(savedSource(node).contains("first()"),"native commit preserves source");

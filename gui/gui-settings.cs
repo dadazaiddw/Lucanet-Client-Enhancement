@@ -85,7 +85,7 @@ internal sealed class FeatureSettingsStore {
             string line=source.Trim();
             if(line.StartsWith("customJavaTypes=",StringComparison.Ordinal))return line.Substring("customJavaTypes=".Length).Trim().Equals("true",StringComparison.OrdinalIgnoreCase);
         }
-        return true;
+        return false;
     }
     internal void SaveCustomJavaTypes(bool enabled) {
         SaveValues(new System.Collections.Generic.Dictionary<string,string>{{"customJavaTypes",enabled ? "true" : "false"}});

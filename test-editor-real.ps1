@@ -28,11 +28,34 @@ foreach($suite in @(@('2311.0.81+6','dom-2311.0.81+6-*.jar','_vm-2311.0.81+6-*.j
         $widgetDeps+=@(Get-ChildItem -LiteralPath $Resources -Filter 'app.ui-2311.0.81+6-*.jar' -File | ForEach-Object FullName)
     }
     $classpath=(@($work,$scene,$ui)+$widgetDeps+$collections) -join ';'
+    $testServerTask=$Probe -eq 'CustomJavaRealProbe' -and $suite[0] -like '2505*'
+    $scriptFile=$null
+    if($testServerTask) {
+        & $jdk.Javac --release 11 -proc:none -encoding UTF-8 -cp $classpath -d $work (Join-Path $PSScriptRoot 'tools\ScriptProbeApplicationPaths.java') (Join-Path $PSScriptRoot 'tools\fixtures\CompilerInfo.java')
+        if($LASTEXITCODE -ne 0){throw 'Script probe application paths compilation failed'}
+        $librarySource=Join-Path $PSScriptRoot 'tools\fixtures\comparator-library'
+        $libraryClasses=Join-Path $work 'comparator-classes'
+        $libraryJar=Join-Path $work 'lucanet-test-comparator.jar'
+        & $jdk.Javac --release 11 -proc:none -encoding UTF-8 -d $libraryClasses (Join-Path $librarySource 'module-info.java') (Join-Path $librarySource 'Test.java')
+        if($LASTEXITCODE -ne 0){throw 'Comparator library compilation failed'}
+        & $jdk.Jar --create --file $libraryJar -C $libraryClasses .
+        if($LASTEXITCODE -ne 0){throw 'Comparator library packaging failed'}
+        $scriptFile=Join-Path $work ('server-task-'+$suite[0]+'.lcs')
+    }
     if($Probe -eq 'NativeCompilerIsolationProbe') {
         & $jdk.Java '-Xverify:all' '-Djava.awt.headless=true' '-Dfixture.baseline=true' -cp $classpath $Probe (Join-Path $work ('editor-'+$suite[0]+'.png'))
         if($LASTEXITCODE -ne 0){throw 'Native compiler baseline failed'}
     }
-    & $jdk.Java '-Xverify:all' '-Djava.awt.headless=false' "-javaagent:$PSScriptRoot\dist\client-enhancement.jar" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$work\features.properties" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe (Join-Path $work ('editor-'+$suite[0]+'.png'))
+    $features=Join-Path $work ('features-'+$suite[0]+'.properties')
+    $probeArguments=@(Join-Path $work ('editor-'+$suite[0]+'.png'))
+    if($testServerTask){ $probeArguments+=@($scriptFile,(Join-Path $librarySource 'Test.java')) }
+    & $jdk.Java '-Xverify:all' '-Djava.awt.headless=false' "-javaagent:$PSScriptRoot\dist\client-enhancement.jar" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$features" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe @probeArguments
     if($LASTEXITCODE -ne 0){throw 'Real Java editor probe failed'}
+    if($testServerTask) {
+        & $jdk.Java '-Xverify:all' '-Djava.awt.headless=true' '-Dfixture.server=true' -cp $classpath $Probe $scriptFile $libraryJar
+        if($LASTEXITCODE -ne 0){throw 'Saved script failed in the unenhanced execution process'}
+        & $jdk.Java '-Xverify:all' '-Djava.awt.headless=false' '-Dfixture.checkNativeEdits=true' "-javaagent:$PSScriptRoot\dist\client-enhancement.jar" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$features" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe $scriptFile
+        if($LASTEXITCODE -ne 0){throw 'Native edits failed to reload in the enhanced process'}
+    }
 }
 Write-Host "Java editor evidence: $work"
