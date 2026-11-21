@@ -1,0 +1,22 @@
+{
+  "Date": "2026-11-21",
+  "Version": "1.0.5",
+  "Jdk21": "D:\\Soft\\LucaNet\\.jdk\\LucaNetJDK-21.0.11+10",
+  "Jdk17": "D:\\Soft\\LucaNet\\.jdk\\LucaNetJDK-17.0.4+8",
+  "NativeReleases": [
+    "2311.0.81+6",
+    "2505.3.4+3"
+  ],
+  "AuditDeliveryPayloadsEqual": true,
+  "JarEntryCount": 188,
+  "PackageEntries": [
+    "lucanet-client-enhancement/enhancement.exe",
+    "lucanet-client-enhancement/install.ps1",
+    "lucanet-client-enhancement/resolve-lucanet-jdk.ps1",
+    "lucanet-client-enhancement/tools/gui-core.ps1",
+    "lucanet-client-enhancement/tools/gui-service.ps1",
+    "lucanet-client-enhancement/dist/client-enhancement.jar"
+  ],
+  "JarSha256": "E088FAA9AF49B42DBFB71F5BD4618661BA7E462992040F5DD24B0D5C3455622C",
+  "PackageSha256": "BE1DFF9C4E1D517A9380ED28D51A22695B8BE921CD0D87501DA44069CA7A21FE"
+}

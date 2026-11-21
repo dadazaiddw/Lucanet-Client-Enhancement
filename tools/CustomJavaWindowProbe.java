@@ -91,6 +91,7 @@ public final class CustomJavaWindowProbe {
             Thread.sleep(1700);check(edt(()->initial.equals(text.getText())),"native template imports unchanged after attachment");
             verifyLibraryCompletion();
             verifyAnnotationCompletion();
+            verifySmartCompletion();
             String incomplete="package edited.pkg;\n// import comment\npublic class WindowType {\n    Fil value;\n}\n";
             edt(()->{text.setText(incomplete);text.setCaretPosition(incomplete.indexOf("Fil")+3);key("control SPACE");return null;});
             await(()->has("import=java.io.File"),"full unit class completion");
@@ -151,12 +152,37 @@ public final class CustomJavaWindowProbe {
             check(section.refreshed>=2,"native details refreshed after save");
             verifyLegacySave();
             verifyNativeChange();
+            verifyExceptionTemplate();
             Files.writeString(evidence.resolveSibling("window-"+evidence.getFileName()+".txt"),"PASS production chooser, native widget completion/import/undo/parameters, close-save/reopen, single/double click, live toggle, read-only scope\n");
             System.out.println("PASS: custom Java chooser/editor, native completion and atomic undo, close-save/reopen, click scope and live switch");
         }catch(Throwable failure){failure.printStackTrace();System.exit(1);}finally{edt(()->{if(controller instanceof AutoCloseable)((AutoCloseable)controller).close();if(assist instanceof AutoCloseable)((AutoCloseable)assist).close();for(Window window:Window.getWindows())window.dispose();return null;});}
         System.exit(0);
     }
 
+    static void verifySmartCompletion()throws Exception {
+        String source="package edited.pkg; public class WindowType {void run(){java.util.List.of(\"x\").var;}}";
+        edt(()->{text.setText(source);text.setCaretPosition(source.indexOf(".var")+4);key("TAB");return null;});
+        await(()->text.getText().contains("List<String> strings = java.util.List.of(\"x\");"),"explicit type variable expansion");
+        Thread.sleep(900);
+        edt(()->{check(text.getText().contains("import java.util.List;")&&"strings".equals(text.getSelectedText()),"variable type import keeps name selection");key("control Z");check(text.getText().equals(source),"variable and import undone together");return null;});
+        String constructor="package edited.pkg; public class WindowType {void run(){new ArrayL<String>();}}";
+        edt(()->{text.setText(constructor);text.setCaretPosition(constructor.indexOf("ArrayL")+6);key("control SPACE");return null;});
+        await(()->has("import=java.util.ArrayList")&&!Boolean.TRUE.equals(field(binding,"parameterPopup")),"constructor completion candidate");
+        edt(()->{select("import=java.util.ArrayList");call(binding,"accept");check(text.getText().contains("import java.util.ArrayList;")&&text.getText().contains("new ArrayList<String>();"),"constructor generic/import expansion");check(text.getText().charAt(text.getCaretPosition()-1)=='('&&text.getText().charAt(text.getCaretPosition())==')',"constructor caret stays inside after import");return null;});
+        Thread.sleep(900);
+        edt(()->{key("control Z");check(text.getText().equals(constructor),"constructor and import undone together");return null;});
+        System.out.println("PASS: full-source inferred type/import/name selection and constructor generics/caret with atomic undo");
+    }
+    static void verifyExceptionTemplate()throws Exception {
+        Files.writeString(features,"customJavaTypes=true\njavaEditorAssist=true\n");
+        edt(()->{section.root=script;section.selected=parent;section.editable=true;check((Boolean)call(controller,"createFromSelection",section),"Exception chooser opens");return null;});
+        edt(()->{JDialog chooser=(JDialog)field(controller,"chooser");JTextField name=(JTextField)find(chooser,"customJavaTypeName");JList<?> kinds=(JList<?>)find(chooser,"customJavaTypeKind");name.setText("UncheckedFailure");kinds.setSelectedIndex(5);name.postActionEvent();return null;});
+        await(()->editors().size()==1,"Exception editor opens");
+        edt(()->{editor=editors().values().iterator().next();text=(JTextComponent)field(editor,"text");check(text.getText().contains("class UncheckedFailure extends RuntimeException")&&text.getText().contains("super(message);"),"Exception chooser uses unchecked template and inherited constructor");
+            ((JFrame)field(editor,"frame")).dispatchEvent(new WindowEvent((JFrame)field(editor,"frame"),WindowEvent.WINDOW_CLOSING));return null;});
+        await(()->editors().isEmpty(),"Exception template saves");
+        System.out.println("PASS: Alt+Insert Exception defaults to RuntimeException");
+    }
     @SuppressWarnings("unchecked")
     static void verifyLegacySave()throws Exception {
         String key="cn.lucanet.enhancement.javaSource.v1";

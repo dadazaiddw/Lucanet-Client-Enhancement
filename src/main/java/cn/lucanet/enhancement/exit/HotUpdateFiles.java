@@ -82,7 +82,16 @@ final class HotUpdateFiles {
         Path temporary = file.resolveSibling(file.getFileName() + "." + UUID.randomUUID() + ".tmp");
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) { properties.store(output, "Lucanet enhancement runtime protocol 1"); }
-            Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            // Windows can briefly deny replacement while another process reads the response.
+            // Keep the old complete file visible and retry the same atomic write.
+            long deadline=System.nanoTime()+2_000_000_000L;
+            while(true)try{
+                Files.move(temporary,file,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+                break;
+            }catch(AccessDeniedException busy){
+                if(System.nanoTime()>=deadline)throw busy;
+                Thread.sleep(25);
+            }
         } finally { Files.deleteIfExists(temporary); }
     }
     static Properties values(String... pairs) {

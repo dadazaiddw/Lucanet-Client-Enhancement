@@ -1,0 +1,1 @@
+PASS: generated imports/shadowing, constructors, boolean accessors, duplicate guards, generic classes, arrays/NaN/null equality and hash contract

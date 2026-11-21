@@ -28,6 +28,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Java semantic analysis tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Annotation processor isolation tests failed.' }
 & $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaMemberGenerationTest (Join-Path $testRoot 'generated beans')
 if ($LASTEXITCODE -ne 0) { throw 'Java method generation tests failed.' }
+& $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaAuditRegressionTest (Join-Path $testRoot 'audit regressions')
+if ($LASTEXITCODE -ne 0) { throw 'Java audit regression tests failed.' }
+& $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaSmartEditingTest (Join-Path $testRoot 'smart editing')
+if ($LASTEXITCODE -ne 0) { throw 'Java smart editing tests failed.' }
 & $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.CustomJavaSourceTest
 if ($LASTEXITCODE -ne 0) { throw 'Custom Java source tests failed.' }
 & $java '-Djava.awt.headless=true' -cp "$classes;$agent" cn.lucanet.enhancement.exit.JavaCompletionPopupTest (Join-Path $testRoot 'java-icons.png')
@@ -61,4 +65,6 @@ if ($LASTEXITCODE -ne 0) { throw 'Live script double-click tests failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Live scene dialog style tests failed.' }
 & $java -cp "$classes;$agent" cn.lucanet.enhancement.exit.HotUpdateTest (Join-Path $testRoot 'hot update 中文') $agent
 if ($LASTEXITCODE -ne 0) { throw 'Hot update transaction tests failed.' }
+& $java -cp "$classes;$agent" cn.lucanet.enhancement.exit.HotUpdateFilesTest (Join-Path $testRoot 'hot update locking')
+if ($LASTEXITCODE -ne 0) { throw 'Hot update contention tests failed.' }
 Write-Host "All tests passed. Evidence: $testRoot"

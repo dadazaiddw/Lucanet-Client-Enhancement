@@ -1,0 +1,46 @@
+EnumWithoutSeparator compiledBefore=true generated=;     @Override     public String toString() {         return super.toString();     }  compiled=true
+EnumBeforeConstant compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=true
+EnumWithSeparator compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=true
+GenericOverrideShadow compiledBefore=true generated=     @Override     public <T1> T convert(T1 x) {         return super.convert(x);     }  compiled=true
+CovariantOverride compiledBefore=false generated=     @Override     public Integer n() {         throw new UnsupportedOperationException("TODO");     }  compiled=true
+BooleanOrPostfix replacement=!((a || b)) caret=11
+StringPipePostfix replacement=System.out.println("a|b"); caret=26
+PublicAfterHelper independentCompiler=true diagnosticCodes=[]
+StaticImportConflict compiledBefore=true compiledAfter=true imports=[javax.swing.*, javax.swing.Action, static java.awt.Desktop.*] diagnosticsBefore=[] diagnosticsAfter=[]
+WildcardDate synced=false warning=true original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+AnnotatedCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+GenericCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+FieldBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+InlineBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+BlankFinal synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+ArrayInitializer synced=true warning=false original=VALUE:[1, 2] native=VALUE:[1, 2] same=true
+FieldOrder synced=true warning=false original=VALUE:0:42 native=VALUE:0:42 same=true
+TrailingComment synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+UnicodeEscape synced=true warning=false original=VALUE:1 native=VALUE:1 same=true
+StringShadow synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+NoWildcardImports synced=true warning=false original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+TerminalEscape synced=true warning=false original=VALUE:a\n  b native=VALUE:a\n  b same=true
+CommentRoundTrip typeComment=true fieldComment=true methodComment=true bodyComment=true warning=false
+CommentRoundTrip originalCommentsRetainedAfterResave=true
+NestedFields SKIP: release has no part folders
+AUDIT_PROBE_COMPLETE
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+WildcardDate synced=false warning=true original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+AnnotatedCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+GenericCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+FieldBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+InlineBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+BlankFinal synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+ArrayInitializer synced=true warning=false original=VALUE:[1, 2] native=VALUE:[1, 2] same=true
+FieldOrder synced=true warning=false original=VALUE:0:42 native=VALUE:0:42 same=true
+TrailingComment synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+UnicodeEscape synced=true warning=false original=VALUE:1 native=VALUE:1 same=true
+StringShadow synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+NoWildcardImports synced=true warning=false original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+TerminalEscape synced=true warning=false original=VALUE:a\n  b native=VALUE:a\n  b same=true
+CommentRoundTrip typeComment=true fieldComment=true methodComment=true bodyComment=true warning=false
+CommentRoundTrip originalCommentsRetainedAfterResave=true
+NestedFields nativeBefore=VALUE:1 editor=VALUE:1 nativeAfterResave=VALUE:1 same=true
+AUDIT_PROBE_COMPLETE

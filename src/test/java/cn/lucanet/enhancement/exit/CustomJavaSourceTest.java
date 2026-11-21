@@ -22,6 +22,7 @@ public final class CustomJavaSourceTest {
             check(parts.isEmpty(),"unrepresentable source remains client-only: "+declaration);
         }
         verifyNativeFormatting();
+        verifyCommentReadback();
         check(CustomJavaTypes.validName("中文工具")&&!CustomJavaTypes.validName("record")&&!CustomJavaTypes.validName("a.b")&&!CustomJavaTypes.validName("1Bad"),"type names and keyword validation");
         SwingUtilities.invokeAndWait(()->{
             JTextArea text=new JTextArea("package custom;\n// keep comment\npublic class Example { File f; }");text.setCaretPosition(text.getText().indexOf("File")+4);
@@ -87,6 +88,24 @@ public final class CustomJavaSourceTest {
         String normalized=parser.apply(header+constructor+"}\n",parts).get(CustomJavaSource.FORMATTED_SOURCE);
         check((header+spaced+"}\n").equals(normalized),"format operators without changing comments, literals, generic delimiters or line breaks");
         check(parser.apply(normalized,parts).get(CustomJavaSource.FORMATTED_SOURCE)==null,"method formatting is idempotent");
+    }
+
+    private static void verifyCommentReadback(){
+        String original="// file note\npackage p;\nimport java.util.List; // import note\n/** type doc */\npublic class Example {\n // field note\n private /* field type note */ int n=1;\n /** first overload */\n public int value(int x){ // old body note\n return x+n; }\n /** second overload */\n public int value(String x){return x.length();}\n // end note\n}";
+        String nativeSource="package p;\nimport java.util.List;\npublic class Example {\n    private int n=2;\n\n    public int value(int x){ return x+n+1; }\n\n    public int value(String x){return x.length();}\n}\n";
+        CustomJavaComments merge=new CustomJavaComments();
+        Map<String,String> result=merge.apply(original,nativeSource);String source=result.get("source");
+        check(!result.containsKey("warning"),"valid native readback is safe");
+        for(String comment:List.of("// file note","// import note","/** type doc */","// field note","/* field type note */","/** first overload */","/** second overload */","// end note"))
+            check(source.contains(comment)&&source.indexOf(comment)==source.lastIndexOf(comment),"declaration comment retained once: "+comment+"\n"+source);
+        check(!source.contains("old body note")&&source.contains("return x+n+1"),"native body replacement remains authoritative");
+        check(source.indexOf("first overload")<source.indexOf("value(int")&&source.indexOf("second overload")>source.indexOf("value(int"),"overload comments stay attached");
+        check(source.equals(merge.apply(source,nativeSource).get("source")),"repeated readback does not duplicate comments");
+        new CustomJavaSource().apply(source,new HashMap<>());
+        Map<String,String> incomplete=merge.apply(original,nativeSource.replace("return x+n+1;","return x+;"));
+        check(incomplete.containsKey("warning")&&incomplete.get("source").contains("return x+;")&&incomplete.get("source").contains("type doc"),"incomplete native draft and comments remain repairable");
+        String literal="package p; public class Text { String s=\"// literal /* stays */\"; void f(){String block=\"\"\"\n // text block\n \"\"\";} }";
+        check(merge.apply(literal,literal).get("source").equals(literal),"strings and text blocks are not declaration comments");
     }
 
     private static ClassLoader getLoader(){return CustomJavaSourceTest.class.getClassLoader();}

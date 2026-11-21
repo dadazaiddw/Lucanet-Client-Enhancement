@@ -53,7 +53,9 @@ final class JavaTypeActions {
                 List<Map<String,String>> methods=overrides(path).stream()
                     .filter(row->"true".equals(row.get("required"))).collect(Collectors.toList());
                 if(!methods.isEmpty()){
-                    String insert=methods.stream().map(row->row.get("insert")).collect(Collectors.joining());
+                    StringBuilder generated=new StringBuilder();
+                    for(Map<String,String> method:methods){String code=method.get("insert");generated.append(generated.length()>0&&"true".equals(method.get("enumSeparator"))?code.substring(1):code);}
+                    String insert=generated.toString();
                     String label=methods.size()==1?"实现 "+methods.get(0).get("name")+"()":"实现 "+methods.size()+" 个抽象方法";
                     Map<String,String> fix=action(label,"fix",insert,Integer.parseInt(methods.get(0).get("replaceStart")));
                     fix.put("imports",methods.stream().map(row->row.getOrDefault("imports","")).filter(value->!value.isEmpty()).collect(Collectors.joining("\n")));
@@ -141,8 +143,8 @@ final class JavaTypeActions {
             boolean isPublic=group.stream().anyMatch(method->method.has(Modifier.PUBLIC));
             boolean isProtected=group.stream().anyMatch(method->method.has(Modifier.PROTECTED));
             String visibility=isPublic?"public ":isProtected?"protected ":"";
-            Map<String,String> row=methodRow(choice,insertion,indent,ownerIndent,visibility,owner.getKind().isInterface(),required,receiver);
-            if(row!=null)rows.add(row);
+            Map<String,String> row=methodRow(owner,choice,insertion,indent,ownerIndent,visibility,owner.getKind().isInterface(),required,receiver);
+            if(row!=null){JavaMemberGeneration.enumSeparator(row,unit,trees,source,(ClassTree)path.getLeaf());rows.add(row);}
         }
         rows.sort(Comparator.comparing((Map<String,String> row)->!Boolean.parseBoolean(row.get("required")))
             .thenComparing(row->row.get("label"),String.CASE_INSENSITIVE_ORDER));
@@ -197,35 +199,32 @@ final class JavaTypeActions {
         return null;
     }
 
-    private Map<String,String> methodRow(Method method,int at,String indent,String ownerIndent,String visibility,boolean defaultMethod,boolean required,String receiver){
+    private Map<String,String> methodRow(TypeElement owner,Method method,int at,String indent,String ownerIndent,String visibility,boolean defaultMethod,boolean required,String receiver){
         ExecutableType signature=method.signature;
+        JavaTypeSpelling spelling=new JavaTypeSpelling(owner,signature);
         List<? extends TypeMirror> parameterTypes=signature.getParameterTypes();
         StringJoiner parameters=new StringJoiner(", "),arguments=new StringJoiner(", ");
         for(int i=0;i<parameterTypes.size();i++){
             TypeMirror type=parameterTypes.get(i);
             if(type.getKind()==TypeKind.ERROR)return null;
-            String spelling=type.toString();
-            if(method.member.isVarArgs()&&i==parameterTypes.size()-1)spelling=((ArrayType)type).getComponentType()+"...";
+            String parameter=spelling.type(type);
+            if(method.member.isVarArgs()&&i==parameterTypes.size()-1)parameter=spelling.type(((ArrayType)type).getComponentType())+"...";
             String name=method.member.getParameters().get(i).getSimpleName().toString();
-            parameters.add(spelling+" "+name);
+            parameters.add(parameter+" "+name);
             arguments.add(name);
         }
-        StringJoiner typeParameters=new StringJoiner(", ","<","> ").setEmptyValue("");
-        for(TypeVariable variable:signature.getTypeVariables()){
-            String bound=variable.getUpperBound().toString();
-            typeParameters.add(variable+(bound.equals("java.lang.Object")?"":" extends "+bound));
-        }
+        String typeParameters=spelling.parameters(signature);
         TypeMirror result=signature.getReturnType();
         if(result.getKind()==TypeKind.ERROR)return null;
         String name=method.member.getSimpleName().toString();
         String header=name+"("+parameters+")";
         String thrown=receiver!=null&&!signature.getThrownTypes().isEmpty()
-            ?" throws "+signature.getThrownTypes().stream().map(Object::toString).collect(Collectors.joining(", ")):"";
+            ?" throws "+signature.getThrownTypes().stream().map(spelling::type).collect(Collectors.joining(", ")):"";
         String statement=receiver!=null?(result.getKind()==TypeKind.VOID?"":"return ")+receiver+"."+name+"("+arguments+");"
             :"throw new java.lang.UnsupportedOperationException(\"TODO\");";
         String suffix=at<source.length()&&source.charAt(at)=='}'?ownerIndent:"";
         String insert="\n"+indent+"@java.lang.Override\n"+indent+visibility+(defaultMethod?"default ":"")+typeParameters
-            +result+" "+header+thrown+" {\n"+indent+"    "+statement+"\n"+indent+"}\n"+suffix;
+            +spelling.type(result)+" "+header+thrown+" {\n"+indent+"    "+statement+"\n"+indent+"}\n"+suffix;
         String label=header.replace("java.lang.","")+" : "+result.toString().replace("java.lang.","");
         Map<String,String> row=action(label,"override",insert,at);
         row.put("name",name);

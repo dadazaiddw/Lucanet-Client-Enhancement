@@ -1,0 +1,2 @@
+PASS: locked import binding, warning transitions, declaration comment readback/resave/XML, generic method and var projection
+PASS: native custom types / XML / compile and execute through native ClassLoader / live switch

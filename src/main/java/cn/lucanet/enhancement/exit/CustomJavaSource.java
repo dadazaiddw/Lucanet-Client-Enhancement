@@ -13,6 +13,7 @@ public final class CustomJavaSource implements BiFunction<String,Map<String,List
     static final String SCRIPT_PACKAGE="com.lucanet.common.dom.script.rt";
     static final String FORMATTED_SOURCE="formattedSource";
     static final String FORMATTED_BODY="formattedBody";
+    static final String SIMPLE_REFERENCES="simpleReferences";
     private static final Set<Modifier> PART_VISIBILITY=Set.of(Modifier.PUBLIC,Modifier.PROTECTED,Modifier.PRIVATE,Modifier.STATIC,Modifier.FINAL);
     private static final Set<Modifier> FIELD_MODIFIERS=Set.of(Modifier.VOLATILE,Modifier.TRANSIENT);
     private static final Set<Modifier> METHOD_MODIFIERS=Set.of(Modifier.SYNCHRONIZED,Modifier.STRICTFP);
@@ -42,6 +43,11 @@ public final class CustomJavaSource implements BiFunction<String,Map<String,List
             Map<String,String> result=new LinkedHashMap<>();
             result.put("name",name);result.put("package",pkg);result.put("qualified",pkg.isEmpty()?name:pkg+"."+name);
             result.put("kind",primary.getKind().name());
+            Set<String> references=new TreeSet<>();
+            new TreeScanner<Void,Void>(){
+                @Override public Void visitIdentifier(IdentifierTree identifier,Void unused){references.add(identifier.getName().toString());return null;}
+            }.scan(primary,null);
+            result.put(SIMPLE_REFERENCES,String.join("\n",references));
             StringBuilder outline=new StringBuilder();
             for(ImportTree entry:unit.getImports())outline.append("0\t").append(entry.toString().trim()).append('\n');
             for(Tree declaration:unit.getTypeDecls())if(declaration instanceof ClassTree)outline((ClassTree)declaration,0,outline);

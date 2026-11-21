@@ -1,0 +1,30 @@
+PASS: native custom types / XML / compile and execute through native ClassLoader / live switch
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+PASS: Main compiles and executes with Test implements Comparator (enhanced)
+PASS: native custom types / XML / compile and execute through native ClassLoader / live switch
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+PASS: Main compiles and executes with Test
+PASS: Main compiles and executes with RevisedTest
+PASS: native XML reload reproduces the missing Test(String, int) error
+PASS: Main compiles and executes with plain Test
+PASS: Main compiles and executes with modular Comparator library
+PASS: Main compiles and executes with sync-original before native edit
+PASS: Main compiles and executes with sync-original saved without the plugin
+PASS: Main compiles and executes with sync-legacy before native edit
+PASS: Main compiles and executes with sync-legacy saved without the plugin
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+PASS: Main compiles and executes with sync-original compiled on the enhanced client
+PASS: Main compiles and executes with sync-original reloaded with the plugin
+PASS: Main compiles and executes with sync-original edited again in the plugin
+PASS: Main compiles and executes with sync-legacy compiled on the enhanced client
+PASS: Main compiles and executes with sync-legacy reloaded with the plugin
+PASS: Main compiles and executes with sync-legacy edited again in the plugin
+PASS: Main compiles and executes with generated source restored by the plugin
+PASS: Main compiles and executes with Comparator after native edit to its placeholder
+Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-fb8c951efffc48f3b8785cb7ef9fb440

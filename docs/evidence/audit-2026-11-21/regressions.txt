@@ -1,0 +1,150 @@
+TEST: TempFileArchiverTest
+PASS: all-file recursive archive including unknown names, hidden, empty and binary files; content, relative paths, collisions, failures and directory boundary
+
+
+TEST: JavaIntelligenceTest
+PASS: Java semantic completion, overloads, generic chains/parameters, scope, access control, imports and native class context
+
+
+TEST: AnnotationIsolationTest
+PASS: service-discovered processor executes in native javac control, never during editor completion/diagnostics/override; annotation library removal refreshes index
+
+
+TEST: JavaMemberGenerationTest
+PASS: generated imports/shadowing, constructors, boolean accessors, duplicate guards, generic classes, arrays/NaN/null equality and hash contract
+
+
+TEST: CustomJavaSourceTest
+PASS: custom unit syntax, types, editable packages/imports, comment preservation and semantic completion
+
+
+TEST: JavaCompletionPopupTest
+PASS: official icons, generic labels, alignment, pixel-filling elision and complete selected signatures at 12/18/30 px, including narrow screens
+
+
+TEST: JavaEditorAssistTest
+PASS: IDEA editing actions, context isolation, live enable/disable, read-only, selection/document preservation and teardown
+
+
+TEST: HotUpdateTest
+PASS: two running JVMs switch actual behavior without restarting; subsequent start uses active version; prepare/commit failures roll back; non-agent process rejected; retired loaders can be collected after old calls release them
+
+
+TEST: NativeLaunchTest
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: KEEP without UI in every client state and with unavailable session state; no runtime file changes; exit archive/restart/failure retained
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: KEEP without UI in every client state and with unavailable session state; no runtime file changes; exit archive/restart/failure retained
+PASS: Manager propagates Agent to Financial and Administrator; each child has only its own entry, no environment/wrapper; server unaffected
+
+
+TEST: DialogIsolationTest
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: Financial and Administrator independently KEEP without Application class; non-client dialog follows original method
+
+
+TEST: NavigationTest
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: reproduced no-reflection failure; direct Swing action opens/navigates, live on/off, exact URI, failures always restore original navigation
+
+
+TEST: ScriptControlsTest
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: script-only live hide/unhide, direct original click, Alt+R/rebind, native guards, no auto-run/repeat/background execution, invalid settings recovery and cleanup
+
+
+TEST: ScriptDoubleClickTest
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: standard/custom-section/program scripts; immediate on/off, wrapped-node identity, node/window/model guards, unchanged folders/metrics/single/Enter, original run without auto-start
+
+
+TEST: jdk
+PASS: numeric JDK versions, build versions, release metadata, complete tools, highest major, explicit pin, no environment fallback
+
+
+TEST: install
+安装状态: not-installed；当前交付版本: False；JDK: 
+Software Manager 运行中: False；Lucanet 进程数: 0；已确认加载的当前进程数: 0
+Lucanet 的 .jdk 中没有可用的完整 JDK（至少 Java 11）。
+配置完整、启动器已加载、客户端退出已执行是不同状态；历史记录不能代替当前会话验证。
+Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-2c53bfc9c5db48eaaccfcc9fef5ed3f8\.client-enhancement\backups\20261121-174317-48c8ea59f2dd4eab96c5be3bdcf795b6
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-2c53bfc9c5db48eaaccfcc9fef5ed3f8\.client-enhancement\backups\20261121-174317-eecd635782ad43feb838987d78a32275
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-2c53bfc9c5db48eaaccfcc9fef5ed3f8\.client-enhancement\backups\20261121-174317-3bee30e516a6469baf40a0f38f8a72b1
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-2c53bfc9c5db48eaaccfcc9fef5ed3f8\.client-enhancement\backups\20261121-174317-87c6f96b4f8147069a5199a0460d1aa2
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Installed. Start the ORIGINAL LucaNetSoftwareManager.exe or its existing shortcut; no extra launcher is needed.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-2c53bfc9c5db48eaaccfcc9fef5ed3f8\.client-enhancement\backups\20261121-174317-666c050ab48b45b1a267008daa0454e8
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+Disabled. Original Software Manager entry no longer loads the enhancement. Backups and inert JAR retained.
+Backup: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\install-test-2c53bfc9c5db48eaaccfcc9fef5ed3f8\.client-enhancement\backups\20261121-174318-b1d9eae95ddb4cd1923a080803b93e5f
+After a Software Manager upgrade, open enhancement.exe and install again for the new release configuration.
+PASS: installation, idempotent reinstall, uninstall, backups, unrelated parameters and unsupported-format preflight
+
+
+TEST: manager-service
+PASS: discovery, manual selection, Lucanet JDK, JSON service install/uninstall/reinstall, running protection, evidence separation and repair (D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\gui-tests-af02c1514ff64b81b56e1ca059ca4e10)
+
+
+TEST: native-integration
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real native configuration propagates to Manager/Financial/Administrator, server unchanged
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real UnknownFileDialogCreator returns KEEP in EMPTY/RUNNING/PREPARE_STOP/IDLE without GUI; includes non-exit session-expiry check path
+Client entry: jar:file:/C:/ProgramData/LucaNet/Youniverse/.resource/assembly_summa_client-2505.3.4+3-lnsuite-ce9acf28.jar!/com/lucanet/assembly/summa/client/SummaClientStart.class
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real UnknownFileDialogCreator returns KEEP in EMPTY/RUNNING/PREPARE_STOP/IDLE without GUI; includes non-exit session-expiry check path
+Client entry: jar:file:/C:/ProgramData/LucaNet/Youniverse/.resource/assembly_summa_admin-2311.0.65+6-lnsuite-d19b6311.jar!/com/lucanet/assembly/summa/admin/SarahAdminClientStart.class
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real UnknownFileDialogCreator returns KEEP in EMPTY/RUNNING/PREPARE_STOP/IDLE without GUI; includes non-exit session-expiry check path
+Client entry: jar:file:/C:/ProgramData/LucaNet/Youniverse/.resource/assembly_summa_admin-2505.11.4+11-lnsuite-7907f61c.jar!/com/lucanet/assembly/summa/admin/SarahAdminClientStart.class
+Native integration evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\native-integration-eeb84bf3cc63448cb10416995a75479a
+
+
+TEST: lifecycle
+Lucanet JDK: 21.0.11+10-LTS [D:\Soft\LucaNet\.jdk\LucaNetJDK-21.0.11+10]
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real Lucanet Application.stop transformed; built-in archive precedes prepareStop and survives restart
+Application library: file:/C:/ProgramData/LucaNet/Youniverse/.resource/ln.application-17.15.3-lnsuite-10010a9a.jar
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real Lucanet Application.stop transformed; built-in archive precedes prepareStop and survives restart
+Application library: file:/C:/ProgramData/LucaNet/Youniverse/.resource/ln.application-17.15.3-lnsuite-10010a9a.jar
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real Lucanet Application.stop transformed; built-in archive precedes prepareStop and survives restart
+Application library: file:/C:/ProgramData/LucaNet/Youniverse/.resource/ln.application-17.15.3-lnsuite-10010a9a.jar
+Real-library test passed. Evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\real-lifecycle-f7c951b3c4c7426794a986d799c315b4
+
+
+TEST: navigation-real
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real external navigation class + active, unmodified VirtualSocket reflection guard; direct action accepts both URI forms: assembly_summa_client-2311.0.81+6-lnsuite-27879c00.jar
+PASS: real UI API contracts; new container -> load navigation point -> navigate on its context
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real external navigation class + active, unmodified VirtualSocket reflection guard; direct action accepts both URI forms: assembly_summa_client-2505.3.4+3-lnsuite-ce9acf28.jar
+PASS: real UI API contracts; new container -> load navigation point -> navigate on its context
+Navigation evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\navigation-real-ff076ca57b284eb9a5f72d70c0bf884c
+
+
+TEST: script-real
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real ProcessLoggerExecutionPanel loads with verified script metadata hooks; native visibility calls retained; source=file:/C:/ProgramData/LucaNet/Youniverse/.resource/_vm-2311.0.81+6-lnsuite-f834e182.jar
+PASS: common Explorer hook, wrapped-node identity and program-script native run getters verify; standard run remains showDialog without start
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: real ProcessLoggerExecutionPanel loads with verified script metadata hooks; native visibility calls retained; source=file:/C:/ProgramData/LucaNet/Youniverse/.resource/lisa-6.8.0-lnsuite-f2d81fa7.jar
+PASS: common Explorer hook, wrapped-node identity and program-script native run getters verify; standard run remains showDialog without start
+Script panel evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\script-real-95d8986bde7f4ace914bab4f803f8bf2
+
+
+TEST: scene-contract
+PASS: real scene class verifies; assembly/close/modal/show callbacks retained, single post-assembly hook; source=file:/C:/ProgramData/LucaNet/Youniverse/.resource/dom-2311.0.81+6-lnsuite-1c313f64.jar
+PASS: real scene class verifies; assembly/close/modal/show callbacks retained, single post-assembly hook; source=file:/C:/ProgramData/LucaNet/Youniverse/.resource/script.engine-5.4.3-lnsuite-ae2494c3.jar
+Scene contract evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\scene-real-322ef2f5f0c34329a04f1f1c04e16671
+
+

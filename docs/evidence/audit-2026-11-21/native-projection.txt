@@ -1,0 +1,38 @@
+WildcardDate synced=true warning=false original=VALUE:java.util.Date native=VALUE:ln.source.api.Date same=false
+AnnotatedCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+GenericCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+FieldBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+InlineBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+BlankFinal synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+ArrayInitializer synced=true warning=false original=VALUE:[1, 2] native=VALUE:[1, 2] same=true
+FieldOrder synced=true warning=false original=VALUE:0:42 native=VALUE:0:42 same=true
+TrailingComment synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+UnicodeEscape synced=true warning=false original=VALUE:1 native=VALUE:1 same=true
+StringShadow synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+NoWildcardImports synced=true warning=false original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+TerminalEscape synced=true warning=false original=VALUE:a\n  b native=VALUE:a\n  b same=true
+CommentRoundTrip typeComment=false fieldComment=false methodComment=false bodyComment=true warning=false
+CommentRoundTrip originalCommentsRetainedAfterResave=false
+NestedFields SKIP: release has no part folders
+AUDIT_PROBE_COMPLETE
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+WildcardDate synced=true warning=false original=VALUE:java.util.Date native=VALUE:ln.source.api.Date same=false
+AnnotatedCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+GenericCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+FieldBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+InlineBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+BlankFinal synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+ArrayInitializer synced=true warning=false original=VALUE:[1, 2] native=VALUE:[1, 2] same=true
+FieldOrder synced=true warning=false original=VALUE:0:42 native=VALUE:0:42 same=true
+TrailingComment synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+UnicodeEscape synced=true warning=false original=VALUE:1 native=VALUE:1 same=true
+StringShadow synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+NoWildcardImports synced=true warning=false original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+TerminalEscape synced=true warning=false original=VALUE:a\n  b native=VALUE:a\n  b same=true
+CommentRoundTrip typeComment=false fieldComment=false methodComment=false bodyComment=true warning=false
+CommentRoundTrip originalCommentsRetainedAfterResave=false
+NestedFields nativeBefore=VALUE:1 editor=VALUE:1 nativeAfterResave=VALUE:1 same=true
+AUDIT_PROBE_COMPLETE
+Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-ec7ac3770b6d4cdcb9c272405e4d81b7

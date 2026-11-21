@@ -1,0 +1,32 @@
+Lucanet JDK: 17.0.4+8 [D:\Soft\LucaNet\.jdk\LucaNetJDK-17.0.4+8]
+Built: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\dist\audit-client-enhancement.jar
+GUI up to date: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\enhancement.exe
+EnumWithoutSeparator compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=false errorCodes=[compiler.err.expected3, compiler.err.expected, compiler.err.enum.constant.expected]
+EnumBeforeConstant compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=false errorCodes=[compiler.err.expected, compiler.err.enum.constant.expected]
+EnumWithSeparator compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=true
+GenericOverrideShadow compiledBefore=true generated=     @Override     public <T> T convert(T x) {         return super.convert(x);     }  compiled=false errorCodes=[compiler.err.override.incompatible.ret, compiler.err.method.does.not.override.superclass, compiler.err.prob.found.req]
+CovariantOverride compiledBefore=false generated=     @Override     public Integer n() {         throw new UnsupportedOperationException("TODO");     }  compiled=true
+BooleanOrPostfix replacement=!((a  b)) caret=5
+StringPipePostfix replacement=System.out.println("ab"); caret=21
+PublicAfterHelper independentCompiler=true diagnosticCodes=[compiler.err.class.public.should.be.in.file]
+StaticImportConflict compiledBefore=true compiledAfter=false imports=[javax.swing.*, static java.awt.Desktop.*] diagnosticsBefore=[] diagnosticsAfter=[compiler.err.ref.ambiguous]
+WildcardDate synced=true warning=false original=VALUE:java.util.Date native=VALUE:ln.source.api.Date same=false
+AnnotatedCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+GenericCtor synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+FieldBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+InlineBlock synced=true warning=false original=VALUE:first\n  second\n native=VALUE:first\n  second\n same=true
+BlankFinal synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+ArrayInitializer synced=true warning=false original=VALUE:[1, 2] native=VALUE:[1, 2] same=true
+FieldOrder synced=true warning=false original=VALUE:0:42 native=VALUE:0:42 same=true
+TrailingComment synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+UnicodeEscape synced=true warning=false original=VALUE:1 native=VALUE:1 same=true
+StringShadow synced=true warning=false original=VALUE:ok native=VALUE:ok same=true
+NoWildcardImports synced=true warning=false original=VALUE:java.util.Date native=VALUE:java.util.Date same=true
+TerminalEscape synced=true warning=false original=VALUE:a\n  b native=VALUE:a\n  b same=true
+CommentRoundTrip typeComment=false fieldComment=false methodComment=false bodyComment=true warning=false
+CommentRoundTrip originalCommentsRetainedAfterResave=false
+NestedFields SKIP: release has no part folders
+AUDIT_PROBE_COMPLETE
+Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-d52d1e98c21545b195d54127219e3a24
+Audit reproduction evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\audit-reproduction-7a7d5fa8e648479fbaac3653c9cc3845
+This probe reports before/after behavior; successful execution does not mean the audited defects are fixed.

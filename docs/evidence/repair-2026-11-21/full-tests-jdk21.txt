@@ -1,0 +1,26 @@
+PASS: all-file recursive archive including unknown names, hidden, empty and binary files; content, relative paths, collisions, failures and directory boundary
+PASS: Java semantic completion, overloads, generic chains/parameters, scope, access control, imports and native class context
+PASS: service-discovered processor executes in native javac control, never during editor completion/diagnostics/override; annotation library removal refreshes index
+PASS: generated imports/shadowing, constructors, boolean accessors, duplicate guards, generic classes, arrays/NaN/null equality and hash contract
+PASS: audit regressions: literal/operators, static wildcard imports, generic identity, enum insertion, primary source name
+PASS: custom unit syntax, types, editable packages/imports, comment preservation and semantic completion
+PASS: official icons, generic labels, alignment, pixel-filling elision and complete selected signatures at 12/18/30 px, including narrow screens
+PASS: IDEA editing actions, context isolation, live enable/disable, read-only, selection/document preservation and teardown
+PASS: locked Windows file retained, other file archived, failure recorded
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: KEEP without UI in every client state and with unavailable session state; no runtime file changes; exit archive/restart/failure retained
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: KEEP without UI in every client state and with unavailable session state; no runtime file changes; exit archive/restart/failure retained
+PASS: Manager propagates Agent to Financial and Administrator; each child has only its own entry, no environment/wrapper; server unaffected
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: Financial and Administrator independently KEEP without Application class; non-client dialog follows original method
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: reproduced no-reflection failure; direct Swing action opens/navigates, live on/off, exact URI, failures always restore original navigation
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: script-only live hide/unhide, direct original click, Alt+R/rebind, native guards, no auto-run/repeat/background execution, invalid settings recovery and cleanup
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+PASS: standard/custom-section/program scripts; immediate on/off, wrapped-node identity, node/window/model guards, unchanged folders/metrics/single/Enter, original run without auto-start
+PASS: blank scene captions before show and after live title/frame changes, modeless/modal live toggles, input/selection/bounds retained, no dispose/show/cancel on toggles, owned child deferral, unrelated dialog isolation and original close action
+PASS: two running JVMs switch actual behavior without restarting; subsequent start uses active version; prepare/commit failures roll back; non-agent process rejected; retired loaders can be collected after old calls release them
+PASS: atomic update response retries a real Windows replacement lock, preserves old data and cleans up after failure

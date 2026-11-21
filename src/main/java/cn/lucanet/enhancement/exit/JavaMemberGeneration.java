@@ -113,6 +113,7 @@ final class JavaMemberGeneration {
         if(body.length()==0)return info("未选择可生成的字段，或对应方法已存在");
         if(at<source.length()&&!Character.isWhitespace(source.charAt(at)))body.append(source.charAt(at)=='}'?outer:indent);
         Map<String,String> row=new HashMap<>(Map.of("kind","generated","label",title(kind),"insert",body.toString(),"replaceStart",String.valueOf(at),"replaceEnd",String.valueOf(at),"caret",String.valueOf(body.length())));
+        enumSeparator(row,unit,trees,source,(ClassTree)path.getLeaf());
         new JavaGeneratedNames(unit,trees,elements,path).shorten(row);
         if(source.contains("\r\n")){row.put("insert",row.get("insert").replace("\n","\r\n"));row.put("caret",String.valueOf(row.get("insert").length()));}
         return List.of(row);
@@ -128,7 +129,9 @@ final class JavaMemberGeneration {
         String mask=JavaIntelligence.mask(source);int depth=1,opening=closing;
         while(--opening>=0){char c=mask.charAt(opening);if(c=='}')depth++;else if(c=='{'&&--depth==0)break;}
         if(opening<0)return -1;
-        int original=Math.max(opening+1,Math.min(caret,closing)),offset=original;
+        int separator=enumBoundary(unit,trees,source,declaration);
+        if(separator==-1)return closing;
+        int original=Math.max(Math.max(opening+1,separator+1),Math.min(caret,closing)),offset=original;
         for(Tree member:declaration.getMembers()){
             long begin=positions.getStartPosition(unit,member),end=positions.getEndPosition(unit,member);
             if(begin>=0&&end>=begin&&original>begin&&original<end)offset=Math.max(offset,(int)end);
@@ -155,6 +158,26 @@ final class JavaMemberGeneration {
             if(text.startsWith("// ===")&&text.contains("End of Class"))offset=previous;
         }
         return offset;
+    }
+    // Only a semicolon outside constants' arguments and anonymous bodies ends the constants area.
+    private static int enumBoundary(CompilationUnitTree unit,Trees trees,String source,ClassTree declaration){
+        if(declaration.getKind()!=Tree.Kind.ENUM)return -2;
+        SourcePositions positions=trees.getSourcePositions();
+        int start=(int)positions.getStartPosition(unit,declaration),end=(int)positions.getEndPosition(unit,declaration);
+        String mask=JavaIntelligence.mask(source);int braces=0,parens=0;
+        for(int i=start;i<end;i++){
+            char c=mask.charAt(i);
+            if(c=='(')parens++;else if(c==')')parens--;
+            else if(c=='{')braces++;else if(c=='}')braces--;
+            else if(c==';'&&braces==1&&parens==0)return i;
+        }
+        return -1;
+    }
+    static void enumSeparator(Map<String,String> row,CompilationUnitTree unit,Trees trees,String source,ClassTree declaration){
+        if(enumBoundary(unit,trees,source,declaration)==-1){
+            row.put("insert",";"+row.get("insert"));row.put("enumSeparator","true");
+            row.put("caret",String.valueOf(row.get("insert").length()));
+        }
     }
     private static int[] commentAt(String source,int caret){
         for(int i=0;i<source.length()&&i<=caret;){
@@ -208,6 +231,7 @@ final class JavaMemberGeneration {
     }
     private String constructor(List<Field> chosen,ExecutableElement parent){
         ExecutableType signature=(ExecutableType)types.asMemberOf((DeclaredType)owner.getSuperclass(),parent);
+        JavaTypeSpelling spelling=new JavaTypeSpelling(owner,signature);
         List<TypeMirror> parameters=new ArrayList<>(signature.getParameterTypes());for(Field f:chosen)parameters.add(f.type());
         if(parameters.stream().anyMatch(JavaMemberGeneration::containsError))return null;
         for(ExecutableElement existing:ElementFilter.constructorsIn(owner.getEnclosedElements())){
@@ -218,18 +242,13 @@ final class JavaMemberGeneration {
         Set<String> used=chosen.stream().map(Field::name).collect(Collectors.toSet());
         for(int i=0;i<signature.getParameterTypes().size();i++){
             String name=parent.getParameters().get(i).getSimpleName().toString();while(!used.add(name))name+="_";
-            declarations.add(signature.getParameterTypes().get(i)+" "+name);arguments.add(name);
+            declarations.add(spelling.type(signature.getParameterTypes().get(i))+" "+name);arguments.add(name);
         }
         for(Field f:chosen)declarations.add(f.type()+" "+f.name());
         if(!arguments.isEmpty())lines.add("super("+String.join(", ",arguments)+");");
         for(Field f:chosen)lines.add("this."+f.name()+" = "+f.name()+";");
-        StringJoiner vars=new StringJoiner(", ","<","> ").setEmptyValue("");
-        for(TypeVariable variable:signature.getTypeVariables()){
-            // A constructor type variable must not change the meaning of a class type variable.
-            if(owner.getTypeParameters().stream().anyMatch(p->p.getSimpleName().contentEquals(variable.toString())))return null;
-            String bound=variable.getUpperBound().toString();vars.add(variable+(bound.equals("java.lang.Object")?"":" extends "+bound));
-        }
-        String thrown=signature.getThrownTypes().isEmpty()?"":" throws "+signature.getThrownTypes().stream().map(Object::toString).collect(Collectors.joining(", "));
+        String vars=spelling.parameters(signature);
+        String thrown=signature.getThrownTypes().isEmpty()?"":" throws "+signature.getThrownTypes().stream().map(spelling::type).collect(Collectors.joining(", "));
         return method("public "+vars+owner.getSimpleName()+"("+String.join(", ",declarations)+")"+thrown,lines,false);
     }
     private boolean hasSuperValueMethods(){

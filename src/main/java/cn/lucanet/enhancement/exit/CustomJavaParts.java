@@ -21,9 +21,9 @@ final class CustomJavaParts {
     private CustomJavaParts(String issue) { this.issue = issue; }
 
     static CustomJavaParts prepare(Object code, Map<String,List<Map<String,String>>> parts, String issue,
-            boolean wasSynced, Snapshot current) throws Throwable {
+            boolean wasSynced, Snapshot current, String references) throws Throwable {
         if (current.hasOtherParts()) return new CustomJavaParts("包含无法在完整源码窗口编辑的原生部件");
-        if (issue == null) issue = current.importConflict(parts);
+        if (issue == null) issue = current.importConflict(parts,references);
         if (issue != null && !wasSynced) return new CustomJavaParts(issue);
         Object imports = Objects.requireNonNull(partFolder(code,"IMPORT","ImportPart"), "ImportParts");
         Set<String> required = new HashSet<>(current.lockedImports);
@@ -113,8 +113,10 @@ final class CustomJavaParts {
         private final Set<String> lockedImports = new LinkedHashSet<>();
         private final List<String> allImports = new ArrayList<>();
         private final Map<String,List<Map<String,String>>> parts = new LinkedHashMap<>();
+        private final ClassLoader loader;
 
         Snapshot(Object code) throws Throwable {
+            loader=code.getClass().getClassLoader();
             // Read the persisted values through Lucanet's XML codec. getSourceCode adds a runtime
             // stack guard to each method, so that generated source cannot be saved as method bodies.
             Object xml = call(code,"getXMLElement","JavaCode");
@@ -176,9 +178,11 @@ final class CustomJavaParts {
             return false;
         }
 
-        String importConflict(Map<String,List<Map<String,String>>> projected) {
+        String importConflict(Map<String,List<Map<String,String>>> projected,String references) {
+            Set<String> imported=new HashSet<>();
             for (Map<String,String> part : projected.getOrDefault("imports",List.of())) {
                 String name = part.get("name");
+                imported.add(name);
                 if (name.startsWith("static ") || name.endsWith(".*")) continue;
                 String simple = name.substring(name.lastIndexOf('.'));
                 for (String locked : lockedImports) {
@@ -187,7 +191,37 @@ final class CustomJavaParts {
                     }
                 }
             }
+            Set<String> simpleNames=new HashSet<>(Arrays.asList(Objects.toString(references,"").split("\n")));
+            for(String locked:lockedImports){
+                if(locked.endsWith(".*")||locked.startsWith("static ")||imported.contains(locked))continue;
+                String simple=locked.substring(locked.lastIndexOf('.')+1);
+                if(simpleNames.contains(simple))return "源码中的 "+simple+" 未显式使用原生内置导入 "+locked+"，写入原生 Class 可能改变类型含义；请改用完整类型名";
+            }
+            for(String locked:lockedImports)if(locked.endsWith(".*")&&!locked.startsWith("static ")&&!imported.contains(locked)){
+                for(String simple:simpleNames){
+                    if(imported.stream().anyMatch(name->!name.startsWith("static ")&&name.endsWith("."+simple)))continue;
+                    String candidate=locked.substring(0,locked.length()-1)+simple;
+                    if(!publicType(candidate))continue;
+                    Set<String> originalWildcards=new HashSet<>(imported);originalWildcards.add("java.lang.*");
+                    boolean conflict=false;
+                    for(String original:originalWildcards)if(original.endsWith(".*")){
+                        String other=original.substring(original.startsWith("static ")?7:0,original.length()-1)+simple;
+                        if(!candidate.equals(other)&&publicType(other)){conflict=true;break;}
+                    }
+                    // Existing scripts may intentionally rely on the native default imports.
+                    // Only reject a wildcard when it competes with a type already visible in source.
+                    if(!conflict)continue;
+                    return "原生内置导入 "+locked+" 会引入源码中未显式导入的 "+simple+"，可能改变类型含义；请改用完整类型名或显式导入";
+                }
+            }
             return null;
+        }
+
+        private boolean publicType(String qualified) {
+            String binary=qualified;
+            while(true)try{return java.lang.reflect.Modifier.isPublic(Class.forName(binary,false,loader).getModifiers());}
+            catch(ClassNotFoundException absent){int dot=binary.lastIndexOf('.');if(dot<0)return false;binary=binary.substring(0,dot)+'$'+binary.substring(dot+1);}
+            catch(LinkageError unavailable){return true;}
         }
 
         boolean matchesProjection(String storedName, Map<String,List<Map<String,String>>> projected) {

@@ -1,6 +1,7 @@
 [CmdletBinding()]
-param([string]$LucanetHome='D:\Soft\LucaNet',[string]$Resources='C:\ProgramData\LucaNet\Youniverse\.resource',[string]$JdkHome='',[ValidateSet('JavaEditorRealProbe','CustomJavaRealProbe','CustomJavaWindowProbe','NativeCompilerIsolationProbe')][string]$Probe='JavaEditorRealProbe')
+param([string]$LucanetHome='D:\Soft\LucaNet',[string]$Resources='C:\ProgramData\LucaNet\Youniverse\.resource',[string]$JdkHome='',[ValidateSet('JavaEditorRealProbe','CustomJavaRealProbe','CustomJavaWindowProbe','NativeCompilerIsolationProbe')][string]$Probe='JavaEditorRealProbe',[string]$JarName='client-enhancement.jar',[switch]$Headless)
 $ErrorActionPreference='Stop'
+$headlessValue=$Headless.IsPresent.ToString().ToLowerInvariant()
 $jdk=& (Join-Path $PSScriptRoot 'resolve-lucanet-jdk.ps1') -LucanetHome $LucanetHome -JdkHome $JdkHome
 $work=Join-Path $PSScriptRoot ('build\java-editor-real-'+[Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work -Force|Out-Null
@@ -49,12 +50,12 @@ foreach($suite in @(@('2311.0.81+6','dom-2311.0.81+6-*.jar','_vm-2311.0.81+6-*.j
     $features=Join-Path $work ('features-'+$suite[0]+'.properties')
     $probeArguments=@(Join-Path $work ('editor-'+$suite[0]+'.png'))
     if($testServerTask){ $probeArguments+=@($scriptFile,(Join-Path $librarySource 'Test.java')) }
-    & $jdk.Java '-Xverify:all' '-Djava.awt.headless=false' "-javaagent:$PSScriptRoot\dist\client-enhancement.jar" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$features" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe @probeArguments
+    & $jdk.Java '-Xverify:all' "-Djava.awt.headless=$headlessValue" "-javaagent:$PSScriptRoot\dist\$JarName" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$features" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe @probeArguments
     if($LASTEXITCODE -ne 0){throw 'Real Java editor probe failed'}
     if($testServerTask) {
         & $jdk.Java '-Xverify:all' '-Djava.awt.headless=true' '-Dfixture.server=true' -cp $classpath $Probe $scriptFile $libraryJar
         if($LASTEXITCODE -ne 0){throw 'Saved script failed in the unenhanced execution process'}
-        & $jdk.Java '-Xverify:all' '-Djava.awt.headless=false' '-Dfixture.checkNativeEdits=true' "-javaagent:$PSScriptRoot\dist\client-enhancement.jar" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$features" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe $scriptFile
+        & $jdk.Java '-Xverify:all' "-Djava.awt.headless=$headlessValue" '-Dfixture.checkNativeEdits=true' "-javaagent:$PSScriptRoot\dist\$JarName" "-Dlucanet.enhancement.runtime=$work\runtime" "-Dlucanet.enhancement.features=$features" "-Dlucanet.exit.logDir=$work\logs" -cp $classpath $Probe $scriptFile
         if($LASTEXITCODE -ne 0){throw 'Native edits failed to reload in the enhanced process'}
     }
 }

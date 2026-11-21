@@ -75,7 +75,8 @@ final class JavaGeneratedNames {
         }.scan(unit,null);
     }
 
-    void shorten(Map<String,String> row){
+    void shorten(Map<String,String> row){shorten(row,true);}
+    void shorten(Map<String,String> row,boolean allowImports){
         String code=row.get("insert");if(code==null)return;
         // Method type variables and generated parameter names can shadow helper/type names.
         Set<String> local=new HashSet<>();
@@ -100,11 +101,19 @@ final class JavaGeneratedNames {
                 for(String wildcard:wildcards){TypeElement other=elements.getTypeElement(wildcard+"."+name);if(other!=null&&!other.getQualifiedName().contentEquals(qualified)){conflict=true;break;}}
                 if(conflict)continue;
             }
+            if(!allowImports&&!implicit&&!imports.contains(qualified)&&!visibleTypes.contains(qualified)){
+                if(!wildcards.contains(topLevel?owner:elementOwner(type)))continue;
+                boolean conflict=false;
+                for(String wildcard:wildcards){TypeElement other=elements.getTypeElement(wildcard+"."+name);if(other!=null&&!other.getQualifiedName().contentEquals(qualified)){conflict=true;break;}}
+                TypeElement lang=elements.getTypeElement("java.lang."+name);
+                if(conflict||lang!=null&&!lang.getQualifiedName().contentEquals(qualified))continue;
+            }
             bindings.put(name,qualified);
-            if(!implicit&&!imports.contains(qualified)&&!visibleTypes.contains(qualified))needed.add(qualified);
+            if(allowImports&&!implicit&&!imports.contains(qualified)&&!visibleTypes.contains(qualified))needed.add(qualified);
             out.append(code,last,match.start()).append(name).append(tail);last=match.end();
         }
         out.append(code,last,code.length());row.put("insert",out.toString());row.put("caret",String.valueOf(out.length()));
         if(!needed.isEmpty())row.put("imports",String.join("\n",needed));
     }
+    private static String elementOwner(TypeElement type){return type.getEnclosingElement().toString();}
 }

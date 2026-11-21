@@ -47,6 +47,11 @@ public final class JavaEditorRealProbe {
             edt(()->{text.setText("java.io.File.new");text.setCaretPosition(text.getText().length());key("TAB");return null;});
             await(()->text.getText().equals("new java.io.File()"));
             edt(()->{check(text.getCaretPosition()==text.getText().length()-1,"postfix constructor caret");key("control Z");check(text.getText().equals("java.io.File.new"),"postfix expansion is one native undo");return null;});
+            edt(()->{text.setText("String value=\"used\"; \"a|b\".var;");text.setCaretPosition(text.getText().length()-1);key("TAB");return null;});
+            await(()->text.getText().equals("String value=\"used\"; String text = \"a|b\";"));
+            edt(()->{check("text".equals(text.getSelectedText()),"var selects an inferred name and keeps the expression");key("control Z");check(text.getText().equals("String value=\"used\"; \"a|b\".var;"),"var is a single native undo including the existing semicolon");return null;});
+            verifySmartInput();
+            verifyCallCompletion();
             // Test isolated compiler loader under an actual bootstrap agent, including SDK classpath.
             Map<String,Object> request=new HashMap<>();String completionText="String value=\"abc\"; value.sub";request.put("text",completionText);request.put("caret",completionText.length());request.put("classpath",System.getProperty("java.class.path"));
             @SuppressWarnings("unchecked") List<Map<String,String>> result=(List<Map<String,String>>)invoke(controller,"analyze",Map.class,request);
@@ -99,6 +104,47 @@ public final class JavaEditorRealProbe {
             return null;
         });
         System.out.println("PASS: native CRLF join/move and exact single-step undo");
+    }
+    static void verifySmartInput()throws Exception {
+        edt(()->{
+            invoke(binding,"dismiss");
+            for(String pair:List.of("()","[]","{}","\"\"","''")){
+                text.setText("");key("typed "+pair.charAt(0));check(text.getText().equals(pair)&&text.getCaretPosition()==1,"native pair and caret "+pair);
+                key("control Z");check(text.getText().isEmpty(),"pair inserted as one undo "+pair);key("control shift Z");
+                text.setCaretPosition(1);key("typed "+pair.charAt(1));check(text.getText().equals(pair)&&text.getCaretPosition()==2,"native closer skip "+pair);
+                key("control Z");check(text.getText().isEmpty(),"skipping closer adds no undo step "+pair);
+                key("typed "+pair.charAt(0));key("BACK_SPACE");check(text.getText().isEmpty(),"native paired backspace "+pair);
+                key("control Z");check(text.getText().equals(pair),"pair deletion is one undo "+pair);
+                text.setText("selected");text.selectAll();key("typed "+pair.charAt(0));check(text.getText().equals(pair.charAt(0)+"selected"+pair.charAt(1))&&"selected".equals(text.getSelectedText()),"native selection wrap "+pair);
+                key("control Z");check(text.getText().equals("selected"),"selection wrap undo "+pair);
+            }
+            text.setText("{}");text.setCaretPosition(1);key("ENTER");String expanded=text.getText();
+            check(expanded.startsWith("{\n")&&expanded.endsWith("\n}")&&text.getCaretPosition()==expanded.lastIndexOf('\n'),"native brace Enter caret/indent");
+            key("control Z");check(text.getText().equals("{}"),"brace Enter undo");
+            text.setText("// comment ");text.setCaretPosition(text.getText().length());key("typed (");check(text.getText().equals("// comment ("),"native comments are not paired");
+            text.setText("\"\"\"\nblock ");text.setCaretPosition(text.getText().length());key("typed \"");check(text.getText().equals("\"\"\"\nblock \""),"native text block quotes remain literal");
+            text.setText("paste");text.selectAll();text.replaceSelection("({\"[");check(text.getText().equals("({\"["),"paste is not transformed");
+            return null;
+        });
+        System.out.println("PASS: native paired typing, wrapping, closer skipping, pair deletion, Enter, paste and atomic undo");
+    }
+    static void verifyCallCompletion()throws Exception {
+        String[][] cases={
+            {"String s=\"x\"; s.sub#(0);","substring","String s=\"x\"; s.substring(0);"},
+            {"String s=\"x\"; s.toS#;","toString","String s=\"x\"; s.toString();"},
+            {"new ArrayL#","ArrayList","new java.util.ArrayList()"},
+            {"new java.util.ArrayL#<String>()","ArrayList","new java.util.ArrayList<String>()"}
+        };
+        for(String[] sample:cases){
+            String original=sample[0].replace("#","");int caret=sample[0].indexOf('#');
+            edt(()->{text.setText(original);text.setCaretPosition(caret);key("control SPACE");return null;});
+            await(()->original.equals(field(binding,"snapshot"))&&has("name="+sample[1])&&!Boolean.TRUE.equals(field(binding,"parameterPopup")));
+            edt(()->{for(int i=0;i<model().size();i++)if(sample[1].equals(((Map<?,?>)model().get(i)).get("name"))){((JList<?>)field(binding,"list")).setSelectedIndex(i);break;}
+                invoke(binding,"accept");check(text.getText().equals(sample[2]),"call completion preserves arguments and generics: "+text.getText());
+                check(text.getText().charAt(text.getCaretPosition()-1)=='(',"call caret inside existing/new parentheses");
+                key("control Z");check(text.getText().equals(original),"call completion one undo");return null;});
+        }
+        System.out.println("PASS: native method/constructor completion, existing arguments, generic arguments and caret/undo");
     }
     static void verifyCompletionLatency(Path evidence)throws Exception {
         KeyboardFocusManager previous=KeyboardFocusManager.getCurrentKeyboardFocusManager();

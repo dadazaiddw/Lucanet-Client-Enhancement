@@ -119,6 +119,8 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
                     if(name.equals("cn.lucanet.enhancement.exit.JavaIntelligence")||name.startsWith("cn.lucanet.enhancement.exit.JavaIntelligence$")
                         ||name.equals("cn.lucanet.enhancement.exit.JavaTypeActions")||name.startsWith("cn.lucanet.enhancement.exit.JavaTypeActions$")
                         ||name.equals("cn.lucanet.enhancement.exit.JavaGeneratedNames")||name.startsWith("cn.lucanet.enhancement.exit.JavaGeneratedNames$")
+                        ||name.equals("cn.lucanet.enhancement.exit.JavaTypeSpelling")||name.startsWith("cn.lucanet.enhancement.exit.JavaTypeSpelling$")
+                        ||name.equals("cn.lucanet.enhancement.exit.JavaVariableInference")||name.startsWith("cn.lucanet.enhancement.exit.JavaVariableInference$")
                         ||name.equals("cn.lucanet.enhancement.exit.JavaMemberGeneration")||name.startsWith("cn.lucanet.enhancement.exit.JavaMemberGeneration$")) {
                         Class<?> type=findLoadedClass(name);if(type==null)type=findClass(name);if(resolve)resolveClass(type);return type;
                     }
@@ -251,9 +253,15 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
             bind("control alt I",()->edit(JavaEditing::indent));
             bind("control shift Z",()->originalAction(target,KeyStroke.getKeyStroke("control Y")));
             bind("control alt O",()->organizeImports(true));
+            for(char delimiter:"()[]{}\"'".toCharArray())bind(KeyStroke.getKeyStroke(delimiter),()->{
+                edit(t->JavaEditing.typePair(t,delimiter));
+                if(delimiter=='(')request("parameters",false);
+            });
+            bind("BACK_SPACE",()->{final boolean[] handled={false};edit(t->handled[0]=JavaEditing.backspacePair(t));if(!handled[0])originalAction(target,KeyStroke.getKeyStroke("BACK_SPACE"));});
+            bind("ENTER",()->{final boolean[] handled={false};edit(t->handled[0]=JavaEditing.enterPair(t));if(!handled[0])originalAction(target,KeyStroke.getKeyStroke("ENTER"));});
             bind("TAB",()->{
                 String before=target.getText().substring(0,target.getCaretPosition());
-                if(before.matches("(?s).*\\.(new|sout|return|nn|null|if|not)$")&&JavaEditing.codeAt(target.getText(),target.getCaretPosition())){request("postfix",true);return;}
+                if(before.matches("(?s).*\\.(new|sout|return|nn|null|if|not|var)$")&&JavaEditing.codeAt(target.getText(),target.getCaretPosition())){request("postfix",true);return;}
                 final boolean[] expanded={false};edit(t->expanded[0]=JavaEditing.template(t));
                 if(!expanded[0])originalAction(target,KeyStroke.getKeyStroke("TAB"));
             });
@@ -264,7 +272,10 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
             if(diagnostics!=null)diagnosticDelay.restart();
         }
         private void bind(String key,Runnable action) {
-            String id=ACTIVE+"."+key;overlayInput.put(KeyStroke.getKeyStroke(key),id);
+            bind(KeyStroke.getKeyStroke(key),action);
+        }
+        private void bind(KeyStroke key,Runnable action) {
+            String id=ACTIVE+"."+key;overlayInput.put(key,id);
             overlayActions.put(id,new AbstractAction(){@Override public void actionPerformed(ActionEvent e){if(installed&&!closed)action.run();}});
         }
         private void originalAction(JTextComponent target,KeyStroke key) {Object id=originalInput.get(key);Action action=id==null?null:originalActions.get(id);if(action!=null)action.actionPerformed(new ActionEvent(target,ActionEvent.ACTION_PERFORMED,""));}
@@ -460,7 +471,7 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
         }
         void accept() {
             JTextComponent target=text.get();Map<String,String> item=list.getSelectedValue();
-            if(target==null||item==null||parameterPopup||"info".equals(item.get("kind"))||!target.getText().equals(snapshot)){hide();return;}
+            if(!installed||target==null||!target.isEditable()||!target.isEnabled()||item==null||parameterPopup||"info".equals(item.get("kind"))||!target.getText().equals(snapshot)){hide();return;}
             try {
                 String insert=item.get("insert");String qualified=item.get("import");
                 int cursor=Integer.parseInt(item.get("caret"));
@@ -471,18 +482,23 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
                     if(!target.getText().equals(snapshot)){hint("导包已更新，请重新触发补全");return;}
                     target.setCaretPosition(Math.min(oldCaret,target.getDocument().getLength()));
                 }
-                if(item.get("kind").equals("method")&&replaceEnd<snapshot.length()&&snapshot.charAt(replaceEnd)=='('){insert=item.get("name");cursor=insert.length();}
                 final int start=Integer.parseInt(item.getOrDefault("replaceStart",String.valueOf(replaceStart)));
                 int finish=Integer.parseInt(item.getOrDefault("replaceEnd",String.valueOf(replaceEnd)));
+                boolean call=item.containsKey("call")||item.get("kind").equals("postfix")&&item.get("name").equals("new");
+                if(call){
+                    String stem=insert.endsWith("()")?insert.substring(0,insert.length()-2):insert;
+                    JavaEditing.CallInsertion plan=JavaEditing.callInsertion(snapshot,finish,stem,!"method".equals(item.get("call")));
+                    insert=plan.text;finish=plan.end;cursor=plan.caret;call=plan.parameters;
+                }
                 if(item.get("kind").equals("postfix")&&(insert.endsWith(";")||"true".equals(item.get("statement")))&&finish<snapshot.length()&&snapshot.charAt(finish)==';')finish++;
                 final String value=insert;final int position=cursor,end=finish;
                 edit(editor->{JavaEditing.replace(editor,start,end,value);editor.setCaretPosition(start+position);
+                    if(item.containsKey("selectionStart"))editor.select(start+Integer.parseInt(item.get("selectionStart")),start+position);
                     for(String name:item.getOrDefault("imports","").split("\n"))if(!name.isBlank())JavaUnitImports.add(editor,name);
                     if(!item.containsKey("unitReference")&&qualified!=null&&!qualified.isEmpty()&&editor.getClientProperty(CustomJavaModel.DOCUMENT) instanceof Map&&!value.equals(qualified)&&!value.equals("new "+qualified+"()"))JavaUnitImports.add(editor,qualified);
                 });
                 if(item.containsKey("imports")&&!item.containsKey("unitReference"))rememberGeneratedImports();
-                if(item.get("kind").equals("method")&&position<value.length())request("parameters",false);
-                if(item.get("kind").equals("postfix")&&item.get("name").equals("new"))request("parameters",true);
+                if(call)request("parameters",false);
                 if(qualified!=null&&!qualified.isEmpty())organizeImports(false);
             }catch(Throwable error){failure(error,true);}
         }

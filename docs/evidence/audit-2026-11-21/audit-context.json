@@ -1,0 +1,15 @@
+{
+  "AuditDate": "2026-11-21",
+  "Commit": "e73cadade11ed39fa2361858adb8475d397d9ac3",
+  "Version": "1.0.5",
+  "DefaultJdk": "D:\\Soft\\LucaNet\\.jdk\\LucaNetJDK-21.0.11+10",
+  "AdditionalJdk": "D:\\Soft\\LucaNet\\.jdk\\LucaNetJDK-17.0.4+8",
+  "OriginalJarSha256": "61539A9E195F9823F110CD6DCA239099F29D79A421277EF3180408EE068BD166",
+  "OriginalVsJdk21AuditBuild": {
+    "EntriesAudit": 178,
+    "DifferentEntryContents": 0,
+    "EntriesOriginal": 178
+  },
+  "ConfirmedFindings": 7,
+  "ProductionFilesModified": false
+}

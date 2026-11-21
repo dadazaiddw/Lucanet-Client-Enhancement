@@ -33,7 +33,8 @@ final class JavaUnitImports {
         int at=Integer.parseInt(rows.get(0).get("replaceStart"));StringBuilder code=new StringBuilder();Set<String> imports=new TreeSet<>();
         for(Map<String,String> row:rows){
             if(Integer.parseInt(row.get("replaceStart"))!=at||Integer.parseInt(row.get("replaceEnd"))!=at)throw new IllegalArgumentException("Generated methods have different insertion positions");
-            code.append(row.get("insert"));for(String name:row.getOrDefault("imports","").split("\n"))if(!name.isBlank())imports.add(name);
+            String insertion=row.get("insert");code.append(code.length()>0&&"true".equals(row.get("enumSeparator"))?insertion.substring(1):insertion);
+            for(String name:row.getOrDefault("imports","").split("\n"))if(!name.isBlank())imports.add(name);
         }
         JavaEditing.replace(text,at,at,code.toString());text.setCaretPosition(at+code.length());
         for(String name:imports)add(text,name);

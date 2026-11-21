@@ -70,7 +70,17 @@ final class CustomJavaModel {
 
     @SuppressWarnings("unchecked")
     static Map<String,String> parse(String source,Map<String,List<Map<String,String>>> parts)throws Exception {
-        try(URLClassLoader loader=new URLClassLoader(new URL[]{CustomJavaModel.class.getProtectionDomain().getCodeSource().getLocation()},
+        try(URLClassLoader loader=parserLoader()) {
+            // The agent's isolated loader cannot resolve jdk.compiler on all client versions.
+            BiFunction<String,Map<String,List<Map<String,String>>>,Map<String,String>> parser=
+                    (BiFunction<String,Map<String,List<Map<String,String>>>,Map<String,String>>)loader
+                        .loadClass(PARSER).getConstructor().newInstance();
+            return parser.apply(source,parts);
+        }
+    }
+
+    private static URLClassLoader parserLoader() {
+        return new URLClassLoader(new URL[]{CustomJavaModel.class.getProtectionDomain().getCodeSource().getLocation()},
                 ClassLoader.getPlatformClassLoader()) {
             @Override protected synchronized Class<?> loadClass(String name,boolean resolve)throws ClassNotFoundException {
                 if(!name.startsWith(PARSER_PACKAGE))return super.loadClass(name,resolve);
@@ -79,12 +89,15 @@ final class CustomJavaModel {
                 if(resolve)resolveClass(type);
                 return type;
             }
-        }) {
-            // The agent's isolated loader cannot resolve jdk.compiler on all client versions.
-            BiFunction<String,Map<String,List<Map<String,String>>>,Map<String,String>> parser=
-                    (BiFunction<String,Map<String,List<Map<String,String>>>,Map<String,String>>)loader
-                        .loadClass(PARSER).getConstructor().newInstance();
-            return parser.apply(source,parts);
+        };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String,String> restoreComments(String stored,String current)throws Exception {
+        try(URLClassLoader loader=parserLoader()) {
+            BiFunction<String,String,Map<String,String>> merger=(BiFunction<String,String,Map<String,String>>)loader
+                .loadClass(PARSER_PACKAGE+"CustomJavaComments").getConstructor().newInstance();
+            return merger.apply(stored,current);
         }
     }
 
@@ -162,6 +175,7 @@ final class CustomJavaModel {
         private final Map<String,String> data;
         private final CustomJavaParts.Snapshot current;
         private final boolean nativeChanged;
+        private Map<String,String> readback;
 
         Version(Map<String,String> data,CustomJavaParts.Snapshot current,boolean nativeChanged) {
             this.data=data;
@@ -181,12 +195,37 @@ final class CustomJavaModel {
 
         boolean needsResave() {
             if(hasStoredSource()&&!data.containsKey(PARTS_STATUS))return true;
+            if(nativeChanged&&SYNCED.equals(data.get(PARTS_STATUS)))return true;
+            if(SYNCED.equals(data.get(PARTS_STATUS))&&savedImportIssue()!=null)return true;
             if((usesNativeSource()||SYNCED.equals(data.get(PARTS_STATUS)))&&current.hasPaddedMethods())return true;
             String raw=unformattedSource();
             return !raw.equals(sourceForEditor(raw));
         }
 
-        private String unformattedSource() { return usesNativeSource()?current.source():data.get("source"); }
+        private String unformattedSource() {
+            if(!usesNativeSource())return data.get("source");
+            if(!hasStoredSource())return current.source();
+            if(readback==null)try {
+                readback=restoreComments(sourceForEditor(data.get("source")),current.source());
+            }catch(Exception | LinkageError failure){
+                EnhancementLog.error("CUSTOM_JAVA_READBACK_FAILED",failure);
+                readback=Map.of("source",data.get("source"),"warning","无法安全读取原生端修改，已保留增强源码，请重新打开后重试。","blocked","true");
+            }
+            return readback.get("source");
+        }
+
+        private String savedImportIssue() {
+            try {
+                Definition definition=legacyDefinition(data.get("source"));
+                return current.importConflict(definition.parts,definition.descriptor.get(CustomJavaSource.SIMPLE_REFERENCES));
+            }catch(Exception | LinkageError failure){return "无法确认原有源码的导入兼容性，请检查后重新保存";}
+        }
+
+        void checkReadback() {
+            if(!usesNativeSource()||!hasStoredSource())return;
+            unformattedSource();
+            if(readback.containsKey("blocked"))throw new IllegalStateException(readback.get("warning"));
+        }
 
         String qualifiedName() {
             return usesNativeSource()?SCRIPT_PACKAGE+"."+current.name:data.getOrDefault("qualified",current.name);
@@ -206,13 +245,16 @@ final class CustomJavaModel {
             if(!hasStoredSource())return new Status("关闭窗口自动保存到 Class。",false);
             if(SYNCED.equals(data.get(PARTS_STATUS))) {
                 if(!editableAsSource())return new Status("已读取原生端修改。额外原生部件请在原生编辑器中查看。",true);
+                if(nativeChanged){unformattedSource();if(readback.containsKey("warning"))return new Status(readback.get("warning"),true);}
+                String importIssue=savedImportIssue();
+                if(importIssue!=null)return new Status(importIssue+"。请检查并重新保存。",true);
                 return new Status(nativeChanged?"已读取原生端修改。":"已同步到原生 Class。",false);
             }
             String reason=data.get(NATIVE_ISSUE);
             if(reason==null) {
                 Definition definition=legacyDefinition(data.get("source"));
                 reason=definition.descriptor.get(NATIVE_ISSUE);
-                if(reason==null)reason=current.importConflict(definition.parts);
+                if(reason==null)reason=current.importConflict(definition.parts,definition.descriptor.get(CustomJavaSource.SIMPLE_REFERENCES));
             }
             String message="原生客户端和服务器无法还原此类。";
             if(reason!=null)message+=reason+"。请使用额外应用程序库部署此类。";
@@ -281,7 +323,7 @@ final class CustomJavaModel {
             case "Record": return header+"public record "+name+"() {"+tail;
             case "Enum": return header+"public enum "+name+" {\n    ;"+tail;
             case "Annotation": return header+"public @interface "+name+" {"+tail;
-            case "Exception": return header+"public class "+name+" extends Exception {\n    public "+name+"(String message) {\n        super(message);\n    }"+tail;
+            case "Exception": return header+"public class "+name+" extends RuntimeException {\n    public "+name+"(String message) {\n        super(message);\n    }"+tail;
             case "Abstract Class": return header+"public abstract class "+name+" {"+tail;
             default:return source;
         }
@@ -306,7 +348,8 @@ final class CustomJavaModel {
         Map<String,String> previous=before.getOrDefault(ATTRIBUTE,Map.of());
         boolean wasSynced=SYNCED.equals(previous.get(PARTS_STATUS));
         CustomJavaParts.Snapshot current=CustomJavaParts.snapshot(code);
-        CustomJavaParts nativeParts=CustomJavaParts.prepare(code,parts,descriptor.get(NATIVE_ISSUE),wasSynced,current);
+        if(wasSynced)new Version(previous,current,changedIfStored(previous,current)).checkReadback();
+        CustomJavaParts nativeParts=CustomJavaParts.prepare(code,parts,descriptor.get(NATIVE_ISSUE),wasSynced,current,descriptor.get(CustomJavaSource.SIMPLE_REFERENCES));
         Map<String,String> data=new LinkedHashMap<>(descriptor);
         String formatted=data.remove(CustomJavaSource.FORMATTED_SOURCE);
         data.put("source",formatted==null?source:formatted);

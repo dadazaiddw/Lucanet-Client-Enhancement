@@ -45,11 +45,14 @@ public final class CustomJavaRealProbe {
             check(base.startsWith("package com.lucanet.common.dom.script.rt;"),"native package retained");check(base.contains("import "),"native imports retained");
             check(!base.contains("End of Class"),"enhanced template hides native section markers");
             String header=base.substring(0,base.indexOf("public class Baseline"));
+            String exceptionTemplate=(String)staticCall(model,"template",parent.getClass().getClassLoader(),"CustomFailure","Exception");
+            check(exceptionTemplate.contains("public class CustomFailure extends RuntimeException"),"Exception template defaults to RuntimeException");
             String[] declarations={"public interface Contract<T> { T value(); }","public abstract class Base<T> implements Contract<T> { public abstract T value(); }","@Deprecated public class Child extends Base<String> { @Override public String value(){return \"ok\";} }","public enum Choice { A, B }","public @interface Marker { String value() default \"中文\"; }","public record Pair<T>(T value) {}","public class CustomFailure extends Exception { public CustomFailure(String message){super(message);} }"};
             List<String> sources=new ArrayList<>();
             for(String declaration:declarations){
-                String source=header+declaration+"\n";String name=declaration.replaceFirst("(?s).*?(?:class|interface|enum|record)\\s+([A-Za-z]+).*","$1");
+                String source=declaration.contains("class CustomFailure ")?exceptionTemplate:header+declaration+"\n";String name=declaration.replaceFirst("(?s).*?(?:class|interface|enum|record)\\s+([A-Za-z]+).*","$1");
                 Object node=save(null,parent,source);check(source.equals(call(node,"getSourceCode")),"native getter uses complete "+name+" source");
+                assertWarning(node,true,"extra application library warning for "+name);
                 check(((List<?>)call(parent,"getChildren")).contains(node),"saved into native Class folder");
                 Object xml=call(handler,"getXMLElement",node);check(String.valueOf(xml).contains("ClassElement")||String.valueOf(xml).contains("Element"),"native XML created");
                 Object reloaded=roundtrip(handler,script);
@@ -77,8 +80,9 @@ public final class CustomJavaRealProbe {
             check(compiledLoader.loadClass(pkg+"Contract").isInstance(instance),"generic interface implemented");
             check(compiledLoader.loadClass(pkg+"Choice").isEnum()&&compiledLoader.loadClass(pkg+"Marker").isAnnotation(),"enum and annotation bytecode");
             Class<?> pair=compiledLoader.loadClass(pkg+"Pair");check("record".equals(pair.getMethod("value").invoke(pair.getConstructor(Object.class).newInstance("record"))),"record constructor and accessor execute");
-            check("expected".equals(((Exception)compiledLoader.loadClass(pkg+"CustomFailure").getConstructor(String.class).newInstance("expected")).getMessage()),"custom exception executes");call(task,"close");
+            check("expected".equals(((RuntimeException)compiledLoader.loadClass(pkg+"CustomFailure").getConstructor(String.class).newInstance("expected")).getMessage()),"default unchecked exception template compiles and executes");call(task,"close");
             verifyNativeParts(handler);
+            verifyAuditRepairs(handler);
             if(args.length>1) {
                 Path path=Path.of(args[1]);
                 writeTask(path);
@@ -97,6 +101,48 @@ public final class CustomJavaRealProbe {
         Map<String,List<Map<String,String>>> parts=new HashMap<>();
         Map<String,String> descriptor=(Map<String,String>)staticCall(model,"parse",source,parts);
         return staticCall(model,"save",node,folder,context,source,descriptor,parts);
+    }
+
+    private static void assertWarning(Object node,boolean expected,String message)throws Throwable {
+        Object status=callDeclared(staticCall(model,"version",node),"status");
+        Field warning=status.getClass().getDeclaredField("warning");warning.setAccessible(true);
+        check(Boolean.valueOf(expected).equals(warning.get(status)),message);
+        if(expected){Field text=status.getClass().getDeclaredField("message");text.setAccessible(true);check(((String)text.get(status)).contains("额外应用程序库"),"deployment guidance is present");}
+    }
+
+    private static void verifyAuditRepairs(Object handler)throws Throwable {
+        Object fixture=create(SCRIPT+"elements.Script"),folder=call(fixture,"getClassRoot");
+        String wildcard=PKG+"import java.util.*;\npublic class WildcardDate { public String value(){ return Date.class.getName(); } }";
+        Object node=save(null,folder,wildcard);
+        check(!Boolean.TRUE.equals(staticCall(model,"hasNativeParts",node)),"omitted locked import cannot silently rebind wildcard Date");
+        assertWarning(node,true,"wildcard collision is red");
+        check(!((String)call(node,"getSourceCode")).contains("import ln.source.api.Date;"),"original Date binding survives in enhanced source");
+        node=save(node,folder,wildcard.replace("Date.class","java.util.Date.class"));
+        check(Boolean.TRUE.equals(staticCall(model,"hasNativeParts",node)),"fully qualified Date is native-compatible");assertWarning(node,false,"qualified import safe");
+        Object code=staticCall(model,"javaCode",node);
+        node=save(node,folder,wildcard);check(call(code,"getMethodPart","value")==null,"transition to client-only clears stale native methods");
+        node=save(node,folder,wildcard.replace("Date.class","java.util.Date.class"));assertWarning(node,false,"transition back to native-compatible");
+        Object list=save(null,folder,PKG+"import java.awt.*; public class WildcardList { public String value(){return List.class.getName();} }");
+        check(!Boolean.TRUE.equals(staticCall(model,"hasNativeParts",list)),"missing native wildcard import cannot introduce an ambiguous List");assertWarning(list,true,"native wildcard collision is red");
+        String source=PKG+"/** business type documentation */\npublic class CommentRoundTrip {\n // field explanation\n private int n;\n /** method documentation */\n public String value(){\n // body comment\n return \"before\";\n }\n}\n";
+        Object comments=save(null,folder,source);
+        code=staticCall(model,"javaCode",comments);
+        call(call(code,"getMethodPart","value"),"setBody","// body comment\nreturn \"after\";",context);
+        Object version=staticCall(model,"version",comments);String editor=(String)callDeclared(version,"source");
+        for(String text:List.of("business type documentation","field explanation","method documentation","body comment"))check(editor.contains(text),"native edit retains "+text);
+        check(editor.contains("\"after\"")&&!editor.contains("\"before\""),"native body is read back");assertWarning(comments,false,"normal native readback is compatible");
+        check(Boolean.TRUE.equals(callDeclared(version,"needsResave")),"native changes can establish a new baseline with Ctrl+S");
+        save(comments,folder,editor);
+        Object restored=roundtrip(handler,fixture);
+        Object loaded=((List<?>)call(call(restored,"getClassRoot"),"getChildren")).get(2);
+        String saved=(String)staticCall(model,"storedSource",loaded);
+        check(saved.contains("method documentation")&&saved.contains("field explanation"),"comment restoration survives resave and native XML roundtrip");
+        String generic=PKG+"public class GenericMethod { public <T> T value(T input){var result=input; return result;} }";
+        Object method=save(null,folder,generic);check(Boolean.TRUE.equals(staticCall(model,"hasNativeParts",method)),"method generics and var bodies fit native parts");assertWarning(method,false,"method generics do not need class-level warning");
+        javax.tools.DiagnosticCollector<javax.tools.JavaFileObject> diagnostics=new javax.tools.DiagnosticCollector<>();
+        Object task=staticCall(Class.forName(COMPILER),"createCompilationTask",List.of(create("com.lucanet.lisa.util.compiler.CompilationUnit",call(method,"getJavaClassName"),call(method,"getSourceCode"))),diagnostics);
+        check(((javax.tools.JavaCompiler.CompilationTask)call(task,"getTask")).call(),"native compiler accepts generic method and var: "+diagnostics.getDiagnostics());call(task,"close");
+        System.out.println("PASS: locked import binding, warning transitions, declaration comment readback/resave/XML, generic method and var projection");
     }
 
     private static void verifyNativeParts(Object handler)throws Throwable {

@@ -18,8 +18,6 @@ import javax.tools.*;
  * Loaded behind a platform-parent classloader so protocol-1 agents can also load jdk.compiler. */
 public final class JavaIntelligence implements Function<Map<String,Object>,List<Map<String,String>>>, AutoCloseable {
     private static final String MARK = "__lucanet_completion__";
-    private static final Pattern TYPE_NAME=Pattern.compile("\\b(?:class|interface|enum|record)\\s+([\\p{javaJavaIdentifierPart}]+)");
-    private static final Pattern PACKAGE_NAME=Pattern.compile("\\bpackage\\s+([\\p{javaJavaIdentifierPart}.]+)\\s*;");
     private static final Pattern ANNOTATION_NAME=Pattern.compile("@\\s*((?:[\\p{javaJavaIdentifierPart}]+\\s*\\.\\s*)*)[\\p{javaJavaIdentifierPart}]*$");
     private final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
     private StandardJavaFileManager files;
@@ -59,6 +57,9 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             while (end < text.length() && Character.isJavaIdentifierPart(text.charAt(end))) end++;
             String prefix = text.substring(start, caret);
             boolean member = start > 0 && text.charAt(start - 1) == '.';
+            Matcher construction=Pattern.compile("(?s).*\\bnew\\s+(?:<[^;{}]+>\\s*)?((?:[\\p{javaJavaIdentifierPart}]+\\s*\\.\\s*)*)$").matcher(mask(text.substring(0,start)));
+            boolean constructor=construction.matches();String constructorQualifier=constructor?construction.group(1).replaceAll("\\s+",""):"";
+            boolean methodReference=mask(text.substring(0,start)).stripTrailing().endsWith("::");
             boolean quickFix=operation.equals("quickFix");
             boolean imports = operation.equals("import")||quickFix;
             Map<String,Map<String,String>> result = new LinkedHashMap<>();
@@ -86,7 +87,7 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                 fixes=actions.fixes(errors);
             }
             if (!imports) {
-                String suffix = end < text.length() && text.charAt(end) == '(' ? "" : "()";
+                String suffix = methodReference||end < text.length() && text.charAt(end) == '(' ? "" : "()";
                 String source = embedded[0].substring(0, base + start) + MARK + suffix + embedded[0].substring(base + end);
                 Analysis analysis = analyze(source, true);
                 TreePath path=marker(analysis);
@@ -100,13 +101,17 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                     analysis.expected=expectedType(analysis,path);
                     Scope scope;
                     try { scope=analysis.trees.getScope(path); } catch(RuntimeException incomplete){scope=null;}
-                    if(scope!=null && member && path.getLeaf() instanceof MemberSelectTree) {
+                    if(scope!=null&&methodReference&&path.getLeaf() instanceof MemberReferenceTree){
+                        TreePath receiver=new TreePath(path,((MemberReferenceTree)path.getLeaf()).getQualifierExpression());
+                        addMembers(result,analysis,scope,analysis.trees.getTypeMirror(receiver),false,prefix);
+                        if(!(analysis.trees.getElement(receiver) instanceof TypeElement))result.values().removeIf(value->"true".equals(value.get("static")));
+                    }else if(scope!=null && member && path.getLeaf() instanceof MemberSelectTree) {
                         TreePath receiver = new TreePath(path, ((MemberSelectTree) path.getLeaf()).getExpression());
                         TypeMirror type = analysis.trees.getTypeMirror(receiver);
                         Element owner = analysis.trees.getElement(receiver);
                         boolean staticOnly = owner instanceof TypeElement;
                         addMembers(result, analysis, scope, type, staticOnly, prefix);
-                        addPostfix(result,analysis,scope,receiver,text,base,start,end,prefix,staticOnly);
+                        addPostfix(result,analysis,scope,receiver,text,base,start,end,prefix,staticOnly,Boolean.TRUE.equals(input.get("compilationUnit")));
                         if (type != null && type.getKind() == TypeKind.ARRAY)
                             add(result, "length", "length : int", "length", "", "field", 6);
                     } else if(scope!=null) {
@@ -123,7 +128,7 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                     }
                 }
             }
-            if (!member && !prefix.isEmpty()) {
+            if ((!member&&!methodReference||constructor) && !prefix.isEmpty()) {
                 if (!indexed) index();
                 int count = 0;
                 Analysis types = attributed!=null?attributed:analyze(embedded[0], true);
@@ -132,6 +137,7 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                 else for(Map.Entry<String,SortedSet<String>> entry:classes.entrySet())
                     if(matches(entry.getKey(),prefix))qualifiedNames.addAll(entry.getValue());
                 qualifiedNames.removeIf(name->imports&&!simpleName(name).equals(prefix));
+                if(!constructorQualifier.isEmpty())qualifiedNames.removeIf(name->!name.equals(constructorQualifier+simpleName(name)));
                 for(String name:customNames)
                     if(imports?simpleName(name).equals(prefix):matches(simpleName(name),prefix))qualifiedNames.add(name);
                 qualifiedNames.sort(Comparator.comparingInt((String q)->matchRank(simpleName(q),prefix)).thenComparingInt(q->classRank(q,types.unit))
@@ -143,7 +149,7 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
                         catch (RuntimeException | LinkageError badLibrary) { continue; }
                         if (type==null||!publicType(type) && !(customNames.contains(qualified)&&packageName(qualified).equals(currentPackage))) continue;
                         String name=simpleName(qualified);
-                        Map<String,String> value=add(result,name,name+" — "+qualified,name,qualified,type!=null&&type.getKind().isInterface()?"interface":"class",name.length());
+                        Map<String,String> value=add(result,name,name+" — "+qualified,name,constructorQualifier.isEmpty()?qualified:"",type!=null&&type.getKind().isInterface()?"interface":"class",name.length());
                         value.put("rank",String.valueOf(classRank(qualified,types.unit)));value.put("detail",packageName(qualified));
                         typeParameters(value,type);
                         iconMetadata(value,types,type);
@@ -154,6 +160,14 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             if(!member && !imports)for(String keyword:("abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient true false try void volatile while var").split(" "))
                 if(matches(keyword,prefix))add(result,keyword,keyword+" — Java",keyword,"","keyword",keyword.length());
             List<Map<String,String>> values = new ArrayList<>(result.values());
+            for(Map<String,String> value:values){
+                if(constructor&&!imports&&(value.get("kind").equals("class")||value.get("kind").equals("interface"))){
+                    value.put("call","constructor");value.put("insert",value.get("name")+"()");value.put("caret",String.valueOf(value.get("name").length()+1));
+                }else if(value.get("kind").equals("method")){
+                    if(methodReference){value.put("insert",value.get("name"));value.put("caret",String.valueOf(value.get("name").length()));}
+                    else value.put("call","method");
+                }
+            }
             values.removeIf(value -> !matches(value.get("name"), prefix));
             values.sort(Comparator.comparingInt((Map<String,String> value) -> matchRank(value.get("name"),prefix))
                     .thenComparingInt(value->Integer.parseInt(value.getOrDefault("typeRank","1")))
@@ -358,12 +372,18 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             @Override public CharSequence getCharContent(boolean ignore){return source;}
         };
     }
-    private static String sourceName(String source) {
-        String lexical=mask(source);
-        Matcher type=TYPE_NAME.matcher(lexical);
-        String name=type.find()?type.group(1):"__LucanetScript";
-        Matcher pkg=PACKAGE_NAME.matcher(lexical);
-        return pkg.find()?pkg.group(1)+"."+name:name;
+    private String sourceName(String source) throws IOException {
+        JavacTask task=(JavacTask)compiler.getTask(new StringWriter(),files,d->{},List.of("-proc:none","-Xlint:none"),null,
+            List.of(sourceFile("__LucanetScript",source)));
+        CompilationUnitTree unit=task.parse().iterator().next();
+        ClassTree primary=null;
+        for(Tree declaration:unit.getTypeDecls())if(declaration instanceof ClassTree){
+            ClassTree type=(ClassTree)declaration;
+            if(primary==null)primary=type;
+            if(type.getModifiers().getFlags().contains(Modifier.PUBLIC)){primary=type;break;}
+        }
+        String name=primary==null?"__LucanetScript":primary.getSimpleName().toString();
+        return unit.getPackageName()==null?name:unit.getPackageName()+"."+name;
     }
     private static final class Analysis {
         final CompilationUnitTree unit; final Trees trees; final Elements elements; final Types types;
@@ -458,7 +478,7 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             for(int i=0;i<method.getParameterTypes().size();i++)
                 signature.add(shortType(method.getParameterTypes().get(i).toString())+" "+params.get(i).getSimpleName());
             String label=name+"("+signature+") : "+shortType(method.getReturnType().toString());
-            Map<String,String> value=add(result,name,label,name+"()","","method",name.length()+(params.isEmpty()?2:1));
+            Map<String,String> value=add(result,name,label,name+"()","","method",name.length()+1);
             iconMetadata(value,a,e);
             value.put("detail",shortType(method.getReturnType().toString()));value.put("rank",e.getEnclosingElement().toString().equals("java.lang.Object")?"35":"10");
             value.put("parameters",signature.toString());value.put("qualified",e.getEnclosingElement().toString());
@@ -625,9 +645,10 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         TreePath[] found={null};new TreePathScanner<Void,Void>(){
             @Override public Void visitIdentifier(IdentifierTree n,Void u){if(n.getName().contentEquals(MARK))found[0]=getCurrentPath();return super.visitIdentifier(n,u);}
             @Override public Void visitMemberSelect(MemberSelectTree n,Void u){if(n.getIdentifier().contentEquals(MARK))found[0]=getCurrentPath();return super.visitMemberSelect(n,u);}
+            @Override public Void visitMemberReference(MemberReferenceTree n,Void u){if(n.getName().contentEquals(MARK))found[0]=getCurrentPath();return super.visitMemberReference(n,u);}
         }.scan(a.unit,null);return found[0];
     }
-    private void addPostfix(Map<String,Map<String,String>> result,Analysis a,Scope scope,TreePath receiver,String text,int base,int start,int end,String prefix,boolean isType)throws IOException {
+    private void addPostfix(Map<String,Map<String,String>> result,Analysis a,Scope scope,TreePath receiver,String text,int base,int start,int end,String prefix,boolean isType,boolean fullUnit)throws IOException {
         long position=a.trees.getSourcePositions().getStartPosition(a.unit,receiver.getLeaf());int from=(int)position-base;
         if(from<0||from>=start-1)return;
         String expression=text.substring(from,start-1);TypeMirror type=a.trees.getTypeMirror(receiver);
@@ -645,21 +666,30 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         TreePath call=receiver.getParentPath().getParentPath();
         boolean statement=call!=null&&call.getParentPath()!=null&&call.getParentPath().getLeaf() instanceof ExpressionStatementTree;
         int line=text.lastIndexOf('\n',from)+1;Matcher indentation=Pattern.compile("[ \\t]*").matcher(text.substring(line,from));indentation.find();String indent=indentation.group();
-        Map<String,String> templates=new LinkedHashMap<>();
+        // The caret is between the two pieces, never encoded in user-controlled source.
+        Map<String,String[]> templates=new LinkedHashMap<>();
+        Map<String,String> variable=null;
         if(isType) {
             Element e=a.trees.getElement(receiver);
             if(e instanceof TypeElement&&canInstantiate(a,scope,(TypeElement)e))
-                templates.put("new","new "+expression+"(|)");
+                templates.put("new",new String[]{"new "+expression+"(",")"});
         }else {
-            if(statement&&type.getKind()!=TypeKind.VOID){templates.put("sout","System.out.println("+expression+");|");templates.put("return","return "+expression+";|");}
-            if(statement&&!type.getKind().isPrimitive()){templates.put("nn","if ("+expression+" != null) {\n"+indent+"    |\n"+indent+"}");templates.put("null","if ("+expression+" == null) {\n"+indent+"    |\n"+indent+"}");}
-            if(type.getKind()==TypeKind.BOOLEAN||type.toString().equals("java.lang.Boolean")){if(statement)templates.put("if","if ("+expression+") {\n"+indent+"    |\n"+indent+"}");templates.put("not","!("+expression+")|");}
+            TreePath container=statement&&call.getParentPath()!=null?call.getParentPath().getParentPath():null;
+            if(statement&&type.getKind()!=TypeKind.VOID&&type.getKind()!=TypeKind.NULL&&container!=null
+                    &&(container.getLeaf() instanceof BlockTree||container.getLeaf() instanceof CaseTree&&((CaseTree)container.getLeaf()).getStatements()!=null)){
+                variable=new JavaVariableInference(a.unit,a.trees,a.elements,a.types,scope,receiver).declaration(expression,fullUnit);
+                if(variable!=null){int cursor=Integer.parseInt(variable.get("caret"));String insertion=variable.get("insert");templates.put("var",new String[]{insertion.substring(0,cursor),insertion.substring(cursor)});}
+            }
+            if(statement&&type.getKind()!=TypeKind.VOID){templates.put("sout",new String[]{"System.out.println("+expression+");",""});templates.put("return",new String[]{"return "+expression+";",""});}
+            if(statement&&!type.getKind().isPrimitive()){templates.put("nn",new String[]{"if ("+expression+" != null) {\n"+indent+"    ","\n"+indent+"}"});templates.put("null",new String[]{"if ("+expression+" == null) {\n"+indent+"    ","\n"+indent+"}"});}
+            if(type.getKind()==TypeKind.BOOLEAN||type.toString().equals("java.lang.Boolean")){if(statement)templates.put("if",new String[]{"if ("+expression+") {\n"+indent+"    ","\n"+indent+"}"});templates.put("not",new String[]{"!("+expression+")",""});}
         }
-        for(Map.Entry<String,String> template:templates.entrySet())if(matches(template.getKey(),prefix)) {
-            String value=template.getValue();int cursor=value.indexOf('|');String insertion=value.replace("|","");
+        for(Map.Entry<String,String[]> template:templates.entrySet())if(matches(template.getKey(),prefix)) {
+            String[] pieces=template.getValue();int cursor=pieces[0].length();String insertion=pieces[0]+pieces[1];
             Map<String,String> row=add(result,template.getKey(),template.getKey()+" — "+insertion.replace('\n',' '),insertion,"","postfix",cursor);
             row.put("replaceStart",String.valueOf(from));row.put("replaceEnd",String.valueOf(end));row.put("detail",insertion.replace('\n',' '));row.put("rank","-10");
             row.put("statement",String.valueOf(!template.getKey().equals("new")&&!template.getKey().equals("not")));
+            if(template.getKey().equals("var"))row.putAll(variable);
         }
     }
     private List<Map<String,String>> organize(Map<String,Object> input,String source)throws IOException {
@@ -680,7 +710,13 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         Set<String> packages=new LinkedHashSet<>();packages.add("java.lang");
         String currentPackage=a.unit.getPackageName()==null?"":a.unit.getPackageName().toString();
         packages.add(currentPackage);
-        for(String name:next)if(name.endsWith(".*")&&!name.startsWith("static "))packages.add(name.substring(0,name.length()-2));
+        Set<TypeElement> wildcardOwners=new LinkedHashSet<>();
+        for(String name:next)if(name.endsWith(".*")){
+            String qualifier=name.substring(name.startsWith("static ")?7:0,name.length()-2);
+            TypeElement owner=a.elements.getTypeElement(qualifier);
+            if(owner!=null)wildcardOwners.add(owner);
+            else if(!name.startsWith("static "))packages.add(qualifier);
+        }
         Map<String,String> referenced=new LinkedHashMap<>();
         for(String name:names)if(!name.endsWith(".*")&&!name.startsWith("static "))referenced.put(simpleName(name),name);
         new TreePathScanner<Void,Void>(){@Override public Void visitIdentifier(IdentifierTree n,Void u){
@@ -688,6 +724,9 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
         }}.scan(a.unit,null);
         for(Map.Entry<String,String> entry:referenced.entrySet()) {
             Set<String> candidates=new HashSet<>();for(String pkg:packages){TypeElement t=a.elements.getTypeElement((pkg.isEmpty()?"":pkg+".")+entry.getKey());if(t!=null&&(publicType(t)||pkg.equals(currentPackage)))candidates.add(t.getQualifiedName().toString());}
+            for(TypeElement owner:wildcardOwners)for(TypeElement type:ElementFilter.typesIn(a.elements.getAllMembers(owner)))
+                if(type.getSimpleName().contentEquals(entry.getKey())&&(publicType(type)||a.elements.getPackageOf(type).getQualifiedName().contentEquals(currentPackage)))
+                    candidates.add(type.getQualifiedName().toString());
             if(candidates.size()>1 && candidates.contains(entry.getValue()))next.add(entry.getValue());
         }
         List<Map<String,String>> values=new ArrayList<>();for(String name:next)values.add(Collections.singletonMap("import",name));return values;

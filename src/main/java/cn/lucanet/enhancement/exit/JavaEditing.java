@@ -102,6 +102,117 @@ final class JavaEditing {
         // A sentinel is left visible only when the caret is outside a literal/comment.
         return mask(text.substring(0,at)+"\u0001").charAt(at)=='\u0001';
     }
+    /** Only typed delimiters use this path; paste and programmatic document changes stay literal. */
+    static void typePair(JTextComponent editor,char typed){
+        String text=editor.getText();int start=editor.getSelectionStart(),end=editor.getSelectionEnd();
+        char closer=closing(typed);boolean code=codeAt(text,start);
+        if(start!=end&&closer!=0&&code&&(typed=='"'||typed=='\''||codeAt(text,end))){
+            String selected=text.substring(start,end);
+            if(typed=='"'||typed=='\'')selected=selected.replace("\\","\\\\").replace(String.valueOf(typed),"\\"+typed).replace("\r","\\r").replace("\n","\\n").replace("\t","\\t");
+            replace(editor,start,end,typed+selected+closer);editor.select(start+1,start+1+selected.length());return;
+        }
+        if(start==end){
+            char next=end<text.length()?text.charAt(end):0;
+            if((typed=='"'||typed=='\'')&&next==typed&&!escaped(text,start)){
+                int state=literalState(text,start);
+                if(state==(typed=='"'?3:4)){editor.setCaretPosition(start+1);return;}
+            }
+            if(")]}".indexOf(typed)>=0&&next==typed&&code&&matchingOpen(text,start,typed)){
+                editor.setCaretPosition(start+1);return;
+            }
+            // A third quote starts a text block. Do not turn it into four quotes.
+            boolean textBlock=typed=='"'&&start>=2&&text.startsWith("\"\"",start-2)&&codeAt(text,start-2);
+            if(closer!=0&&code&&!textBlock&&(next==0||Character.isWhitespace(next)||",;:)]}".indexOf(next)>=0)){
+                replace(editor,start,end,""+typed+closer);editor.setCaretPosition(start+1);return;
+            }
+        }
+        replace(editor,start,end,String.valueOf(typed));
+    }
+    private static char closing(char c){switch(c){case '(':return ')';case '[':return ']';case '{':return '}';case '"':case '\'':return c;default:return 0;}}
+    private static boolean escaped(String text,int at){int count=0;while(at>0&&text.charAt(--at)=='\\')count++;return count%2!=0;}
+    private static boolean matchingOpen(String text,int at,char closer){
+        String code=mask(text.substring(0,at));Deque<Character> stack=new ArrayDeque<>();
+        for(int i=0;i<code.length();i++){
+            char c=code.charAt(i);
+            if("([{".indexOf(c)>=0)stack.push(c);
+            else if(")]}".indexOf(c)>=0){if(stack.isEmpty()||closing(stack.pop())!=c)return false;}
+        }
+        return !stack.isEmpty()&&closing(stack.peek())==closer;
+    }
+    private static int literalState(String text,int at){
+        int state=0;
+        for(int i=0;i<at;i++){
+            char c=text.charAt(i),next=i+1<at?text.charAt(i+1):0;
+            if(state==0){
+                if(c=='/'&&(next=='/'||next=='*')){state=next=='/'?1:2;i++;}
+                else if(c=='"'&&i+2<at&&text.startsWith("\"\"\"",i)){state=5;i+=2;}
+                else if(c=='"'||c=='\'')state=c=='"'?3:4;
+            }else if(state==1&&c=='\n')state=0;
+            else if(state==2&&c=='*'&&next=='/'){state=0;i++;}
+            else if(state>=3&&c=='\\')i++;
+            else if(state==5&&i+2<at&&text.startsWith("\"\"\"",i)){state=0;i+=2;}
+            else if(state==3&&c=='"'||state==4&&c=='\'')state=0;
+        }
+        return state;
+    }
+    static boolean backspacePair(JTextComponent editor){
+        String text=editor.getText();int at=editor.getCaretPosition();
+        if(editor.getSelectionStart()!=editor.getSelectionEnd()||at==0||at>=text.length())return false;
+        char opener=text.charAt(at-1);
+        if(closing(opener)==0||closing(opener)!=text.charAt(at)||!codeAt(text,at-1))return false;
+        if(opener=='"'&&(at>=2&&text.charAt(at-2)=='"'||at+1<text.length()&&text.charAt(at+1)=='"'))return false;
+        replace(editor,at-1,at+1,"");return true;
+    }
+    static boolean enterPair(JTextComponent editor){
+        if(editor.getSelectionStart()!=editor.getSelectionEnd())return false;
+        String text=editor.getText();int at=editor.getCaretPosition(),left=at,right=at;
+        if(!codeAt(text,at))return false;
+        while(left>0&&(text.charAt(left-1)==' '||text.charAt(left-1)=='\t'))left--;
+        while(right<text.length()&&(text.charAt(right)==' '||text.charAt(right)=='\t'))right++;
+        if(left==0||right==text.length()||text.charAt(left-1)!='{'||text.charAt(right)!='}')return false;
+        String line=text.substring(lineStart(text,left-1),left-1),indent=line.substring(0,line.length()-line.stripLeading().length());
+        String unit="    ";
+        try{int width=((Number)JavaEditorContext.call(editor,"getTabSize")).intValue();if(width>0&&width<=16)unit=" ".repeat(width);}catch(Throwable unavailable){}
+        try{if(Boolean.FALSE.equals(JavaEditorContext.call(editor,"getTabsEmulated")))unit="\t";}catch(Throwable unavailable){if(indent.contains("\t"))unit="\t";}
+        String inside=newline(text)+indent+unit;
+        replace(editor,left,right,inside+newline(text)+indent);editor.setCaretPosition(left+inside.length());return true;
+    }
+
+    static final class CallInsertion {
+        final String text;final int end,caret;final boolean parameters;
+        CallInsertion(String text,int end,int caret,boolean parameters){this.text=text;this.end=end;this.caret=caret;this.parameters=parameters;}
+    }
+    /** Reuses existing type arguments, trivia and call arguments without replacing the latter. */
+    static CallInsertion callInsertion(String source,int end,String stem,boolean constructor){
+        int next=triviaEnd(source,end),genericEnd=end;
+        if(constructor&&next<source.length()&&source.charAt(next)=='<'){
+            String code=mask(source);int depth=0,close=-1;
+            for(int i=next;i<code.length();i++){char c=code.charAt(i);if(c=='<')depth++;else if(c=='>'&&--depth==0){close=i+1;break;}else if(c==';'||c=='{'||c=='}')break;}
+            if(close<0)return new CallInsertion(stem,end,stem.length(),false);
+            genericEnd=close;next=triviaEnd(source,close);
+        }
+        if(constructor&&next<source.length()&&source.charAt(next)=='[')return new CallInsertion(stem,end,stem.length(),false);
+        if(next<source.length()&&source.charAt(next)=='('){
+            // Also close a lone '(' at a statement boundary; existing arguments stay untouched.
+            int after=triviaEnd(source,next+1);
+            if(after==source.length()||";}".indexOf(source.charAt(after))>=0){
+                String insertion=stem+source.substring(end,next+1)+")";
+                return new CallInsertion(insertion,next+1,insertion.length()-1,true);
+            }
+            return new CallInsertion(stem,end,stem.length()+next-end+1,true);
+        }
+        String insertion=stem+source.substring(end,genericEnd)+"()";
+        return new CallInsertion(insertion,genericEnd,insertion.length()-1,true);
+    }
+    private static int triviaEnd(String text,int at){
+        while(at<text.length()){
+            if(Character.isWhitespace(text.charAt(at))){at++;continue;}
+            if(text.startsWith("/*",at)){int end=text.indexOf("*/",at+2);if(end<0)break;at=end+2;continue;}
+            if(text.startsWith("//",at)){int end=text.indexOf('\n',at+2);if(end<0)break;at=end+1;continue;}
+            break;
+        }
+        return at;
+    }
     /** Same-length lexical mask for comments, strings, characters and Java text blocks. */
     static String mask(String text) {
         StringBuilder out=new StringBuilder(text);int state=0;

@@ -28,6 +28,12 @@ public final class JavaEditorAssistTest {
             check(JavaEditorAssist.automaticOperation("// @",4,false)==null&&JavaEditorAssist.automaticOperation("\"@",2,false)==null,"@ in comments or strings is ignored");
             String block="String value=\"\"\"\n  { text }\n\"\"\";";check(!JavaEditing.codeAt(block,22),"text block suppression");
             verifyLineEndings();
+            for(String pair:java.util.List.of("()","[]","{}","\"\"","''")){
+                panel.text.setText("");press("typed "+pair.charAt(0));check(panel.text.getText().equals(pair)&&panel.text.getCaretPosition()==1,"typed binding inserts pair "+pair);
+                press("typed "+pair.charAt(1));check(panel.text.getText().equals(pair)&&panel.text.getCaretPosition()==2,"typed binding skips closer "+pair);
+                panel.text.setCaretPosition(1);press("BACK_SPACE");check(panel.text.getText().isEmpty(),"paired backspace binding "+pair);
+            }
+            panel.text.setText("{}");panel.text.setTabSize(4);panel.text.setCaretPosition(1);press("ENTER");check(panel.text.getText().equals("{\n    \n}")&&panel.text.getCaretPosition()==6,"brace Enter binding");
             content="String pending = \"unsaved\";";panel.text.setText(content);panel.text.select(7,14);
         });
         Files.writeString(features,"javaEditorAssist=false\n");await(()->panel.text.getInputMap()==original);
