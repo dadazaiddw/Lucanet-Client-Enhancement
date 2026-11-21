@@ -1,7 +1,0 @@
-OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
-PASS: real ProcessLoggerExecutionPanel loads with verified script metadata hooks; native visibility calls retained; source=file:/C:/ProgramData/LucaNet/Youniverse/.resource/_vm-2311.0.81+6-lnsuite-f834e182.jar
-PASS: common Explorer hook, wrapped-node identity and program-script native run getters verify; standard run remains showDialog without start
-OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
-PASS: real ProcessLoggerExecutionPanel loads with verified script metadata hooks; native visibility calls retained; source=file:/C:/ProgramData/LucaNet/Youniverse/.resource/lisa-6.8.0-lnsuite-f2d81fa7.jar
-PASS: common Explorer hook, wrapped-node identity and program-script native run getters verify; standard run remains showDialog without start
-Script panel evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\script-real-029949fa1e174a5280965126d899c231

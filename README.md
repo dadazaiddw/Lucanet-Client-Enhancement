@@ -59,7 +59,22 @@ lucanet-client-enhancement/
     └── client-enhancement.jar
 ```
 
-请保留目录结构，不能只复制 EXE。README、源码和测试文件保留在仓库中，不放入运行包。
+请保留目录结构，不能只复制 EXE。README、源码和许可证保留在源码仓库中；审计材料和测试文件仅在本地维护，不提交到 GitHub，也不放入运行包。运行包中的 JAR 内嵌第三方许可与归属说明。
+
+### 从源码构建
+
+源码仓库包含 Java 和管理器源码、运行资源、许可证，以及构建和安装脚本。EXE、JAR 和运行 ZIP 由本地构建生成，不提交到 GitHub。
+
+在 Windows PowerShell 中进入项目目录，执行：
+
+```powershell
+.\build.ps1 -LucanetHome 'D:\Soft\LucaNet'
+.\package.ps1
+```
+
+将 `-LucanetHome` 改为实际的 Software Manager 安装目录。构建自动选择该目录 `.jdk` 中版本最高的完整 JDK，使用 `.resource` 中的 `asm-9.7.jar`、`asm-commons-9.7.jar`，并通过系统 .NET Framework 编译管理器。
+
+构建结果为项目根目录的 `enhancement.exe` 和 `dist/client-enhancement.jar`。打包后可使用 `dist/lucanet-client-enhancement.zip`，完整解压后按上面的安装步骤使用。
 
 ## 管理器与设置
 
@@ -171,8 +186,6 @@ Lombok 等依赖的编译与注解处理遵循 Lucanet 原生方式，增强插�
 在完整源码窗口中，将光标放到希望插入方法的位置，按 **Alt+Insert** 打开 **Generate** 菜单。菜单使用 IDEA 风格的标题、圆角和选中状态；直接输入即可搜索，按命令名称进行不区分大小写的包含匹配。例如输入 `s`，可筛选出 Constructor、Setter、equals/hashCode、toString 等名称包含 `s` 的命令。
 
 按 ↑/↓ 选择、Enter 确认、Backspace 删除搜索字符；Ctrl+Backspace 清空搜索。搜索时按 Esc 清空，再按 Esc 关闭菜单；没有搜索词时 Esc 直接关闭。菜单内按 Ctrl+O 也可进入重写方法选择。
-
-![源码窗口中的 Generate 菜单](docs/images/generate-menu.png)
 
 | 菜单项 | 行为与规则 |
 | --- | --- |

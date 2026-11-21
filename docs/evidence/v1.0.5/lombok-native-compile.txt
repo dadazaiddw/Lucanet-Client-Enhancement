@@ -1,6 +1,0 @@
-PASS: native module compiler, Lombok bytecode/native loader execution, unchanged ordinary bytecode/diagnostics, proc:none and absent-hook fallback
-SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
-SLF4J: Defaulting to no-operation (NOP) logger implementation
-SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
-PASS: native module compiler, Lombok bytecode/native loader execution, unchanged ordinary bytecode/diagnostics, proc:none and absent-hook fallback
-Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-5f76788c961740feaa2e85b3f59a5f3d

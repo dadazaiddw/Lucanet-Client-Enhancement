@@ -1,9 +1,0 @@
-EnumWithoutSeparator compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=false errorCodes=[compiler.err.expected3, compiler.err.expected, compiler.err.enum.constant.expected]
-EnumBeforeConstant compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=false errorCodes=[compiler.err.expected, compiler.err.enum.constant.expected]
-EnumWithSeparator compiledBefore=true generated=     @Override     public String toString() {         return super.toString();     }  compiled=true
-GenericOverrideShadow compiledBefore=true generated=     @Override     public <T> T convert(T x) {         return super.convert(x);     }  compiled=false errorCodes=[compiler.err.override.incompatible.ret, compiler.err.method.does.not.override.superclass, compiler.err.prob.found.req]
-CovariantOverride compiledBefore=false generated=     @Override     public Integer n() {         throw new UnsupportedOperationException("TODO");     }  compiled=true
-BooleanOrPostfix replacement=!((a  b)) caret=5
-StringPipePostfix replacement=System.out.println("ab"); caret=21
-PublicAfterHelper independentCompiler=true diagnosticCodes=[compiler.err.class.public.should.be.in.file]
-StaticImportConflict compiledBefore=true compiledAfter=false imports=[javax.swing.*, static java.awt.Desktop.*] diagnosticsBefore=[] diagnosticsAfter=[compiler.err.ref.ambiguous]

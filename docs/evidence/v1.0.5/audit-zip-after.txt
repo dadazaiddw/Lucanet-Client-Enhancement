@@ -1,1 +1,0 @@
-PASS: GitHub stable releases, numeric version comparison, no downgrade, 404/rate limit, checksum download, wrapped/legacy packages, executable root, mixed layout rejection, redirect allowlist, ZIP traversal rejection, forged decompressed lengths and partial extraction cleanup

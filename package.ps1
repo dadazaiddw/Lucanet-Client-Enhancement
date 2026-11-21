@@ -3,8 +3,8 @@ param([string]$JarName = 'client-enhancement.jar')
 $ErrorActionPreference = 'Stop'
 if ($JarName -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*\.jar$') { throw 'JarName must be a simple .jar file name, without directories.' }
 $agent = Join-Path (Join-Path $PSScriptRoot 'dist') $JarName
-if (-not (Test-Path -LiteralPath $agent -PathType Leaf)) { throw 'Run test.ps1 before packaging.' }
-# 客户交付包只包含 GUI 的运行依赖。维护源码、文档、测试、命令行快捷入口均留在仓库。
+if (-not (Test-Path -LiteralPath $agent -PathType Leaf)) { throw 'Run build.ps1 before packaging.' }
+# 客户交付包只包含 GUI 的运行依赖。源码、说明和构建入口保留在源码仓库，审计和测试文件仅在本地维护。
 # 此清单同时对应 GUI 更新器 VerifyAndExtract 检查的完整运行包结构。
 $files = @(
     'enhancement.exe',

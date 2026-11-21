@@ -1,1 +1,0 @@
-PASS: two running JVMs switch actual behavior without restarting; subsequent start uses active version; prepare/commit failures roll back; non-agent process rejected; retired loaders can be collected after old calls release them

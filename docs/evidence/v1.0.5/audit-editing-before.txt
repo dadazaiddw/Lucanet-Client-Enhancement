@@ -1,2 +1,0 @@
-Exception in thread "main" java.lang.AssertionError: CRLF join left a line break: a();\r b();
-	at cn.lucanet.enhancement.exit.AuditEditingProbe.main(AuditEditingProbe.java:5)

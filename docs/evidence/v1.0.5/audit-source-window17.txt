@@ -1,6 +1,0 @@
-ע: D:\File\Codex\Lucanet\��ǿ���\Lucanet-Client-Enhancement\tools\CustomJavaWindowProbe.javaʹ����δ�����򲻰�ȫ�Ĳ�����
-ע: �й���ϸ��Ϣ, ��ʹ�� -Xlint:unchecked ���±��롣
-PASS: native @ auto-completion; annotation-only suggestions, auto import and atomic undo
-PASS: Alt+Insert menu, field selection, constructor/accessors/equals/hashCode/toString, short names/imports and native atomic undo
-PASS: custom Java chooser/editor, native completion and atomic undo, close-save/reopen, click scope and live switch
-Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-d263ad4c629c4798b1f4f7c7c6675ce2

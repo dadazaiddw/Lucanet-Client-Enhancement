@@ -1,1 +1,0 @@
-120 native arrow selections: median 9.260 ms; p95 12.955 ms; max 15.360 ms; views=3; windowHides=0

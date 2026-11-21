@@ -1,9 +1,0 @@
-120 native arrow selections: median 9.274 ms; p95 12.278 ms; max 16.208 ms; views=3; windowHides=0
-PASS: actual Lucanet widget, automatic argument completion after parameter hints, Ctrl+P, generics/alignment, native imports, source/Class snapshots, postfix undo and live settings
-SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
-SLF4J: Defaulting to no-operation (NOP) logger implementation
-SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
-PASS: native script adapter indexes only the active Script's extra JAR and refreshes after removal
-120 native arrow selections: median 12.765 ms; p95 16.317 ms; max 20.438 ms; views=3; windowHides=0
-PASS: actual Lucanet widget, automatic argument completion after parameter hints, Ctrl+P, generics/alignment, native imports, source/Class snapshots, postfix undo and live settings
-Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-32186e4255c945b7b9afc3bdb5170cb6

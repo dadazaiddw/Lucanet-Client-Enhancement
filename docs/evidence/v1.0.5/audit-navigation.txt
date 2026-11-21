@@ -1,7 +1,0 @@
-OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
-PASS: real external navigation class + active, unmodified VirtualSocket reflection guard; direct action accepts both URI forms: assembly_summa_client-2311.0.81+6-lnsuite-27879c00.jar
-PASS: real UI API contracts; new container -> load navigation point -> navigate on its context
-OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
-PASS: real external navigation class + active, unmodified VirtualSocket reflection guard; direct action accepts both URI forms: assembly_summa_client-2505.3.4+3-lnsuite-ce9acf28.jar
-PASS: real UI API contracts; new container -> load navigation point -> navigate on its context
-Navigation evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\navigation-real-2920a3736dfd4f23ad218985eaf9211a

@@ -1,3 +1,0 @@
-PASS: generated imports/shadowing, constructors, boolean accessors, duplicate guards, generic classes, arrays/NaN/null equality and hash contract
-PASS: Java semantic completion, overloads, generic chains/parameters, scope, access control, imports and native class context
-PASS JDK 17.0.4+8: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\generation-6f8dee143554464882186228a317a5bd

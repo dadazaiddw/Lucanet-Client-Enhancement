@@ -1,5 +1,86 @@
-/build/
-/dist/
-/logs/
-/target/
-/.idea/
+# Track production source and the files needed to build, install and use it.
+# New root-level production files must be explicitly allowed below.
+/*
+!/.gitignore
+!/README.md
+!/pom.xml
+!/licenses/
+
+# Build, packaging and installation entry points.
+!/build.cmd
+!/build.ps1
+!/build-gui.ps1
+!/check.cmd
+!/install.cmd
+!/install.ps1
+!/uninstall.cmd
+!/resolve-lucanet-jdk.ps1
+!/maven.cmd
+!/maven.ps1
+!/package.cmd
+!/package.ps1
+
+# Java production source and runtime resources.
+!/src/
+/src/*
+!/src/main/
+
+# Windows manager source and its required assets.
+!/gui/
+/gui/*
+!/gui/*.cs
+!/gui/enhancement.manifest
+!/gui/assets/
+/gui/assets/*
+!/gui/assets/lucanet.ico
+
+# Only production tools; probes and fixtures stay local.
+!/tools/
+/tools/*
+!/tools/AssembleAgent.java
+!/tools/gui-core.ps1
+!/tools/gui-service.ps1
+
+# Audits, test suites, fixtures and evidence are local maintenance files.
+/docs/
+/src/test/
+/src/integration/
+/gui/tests/
+/tools/fixtures/
+/test*.ps1
+/test*.cmd
+**/test/
+**/tests/
+**/fixtures/
+**/evidence/
+**/audit/
+**/audits/
+*Test.java
+*Tests.java
+*Probe.java
+*-tests.cs
+*-probe.cs
+
+# Generated output, IDE state and temporary files, including nested folders.
+**/build/
+**/dist/
+**/logs/
+**/target/
+**/.idea/
+**/.vscode/
+**/.vs/
+*.class
+*.jar
+*.exe
+*.dll
+*.pdb
+*.zip
+*.7z
+*.log
+*.tmp
+*.bak
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini

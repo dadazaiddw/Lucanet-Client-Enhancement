@@ -1,5 +1,0 @@
-PASS: native baseline recorded
-PASS: real DynamicCompiler.compile bytecode and diagnostics unchanged; default/explicit processor policy preserved; Lombok hooks absent
-PASS: native baseline recorded
-PASS: real DynamicCompiler.compile bytecode and diagnostics unchanged; default/explicit processor policy preserved; Lombok hooks absent
-Java editor evidence: D:\File\Codex\Lucanet\增强插件\Lucanet-Client-Enhancement\build\java-editor-real-ba0e85a846024c2aa2d81eb76c7f4f79
