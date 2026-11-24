@@ -184,14 +184,16 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
         InputMap originalInput,overlayInput;ActionMap originalActions,overlayActions;
         Document document;boolean installed,editing,detached;int generation;
         Future<?> pending;int replaceStart,replaceEnd;String snapshot;boolean parameterPopup;String lookupPrefix="";
-        final FocusListener focus=new FocusAdapter(){@Override public void focusLost(FocusEvent e){dismiss();}};
+        JavaVariableTemplate variableTemplate;
+        final FocusListener focus=new FocusAdapter(){@Override public void focusLost(FocusEvent e){variableTemplate=null;dismiss();}};
         final CaretListener caret=e->caretChanged();
-        private void caretChanged(){if(!editing){generation++;cancelAnalysis(pending);hide();if(parameterPopup&&installed)delay.restart();}}
+        private void caretChanged(){if(!editing){if(variableTemplate!=null&&!variableTemplate.contains(text.get()))variableTemplate=null;generation++;cancelAnalysis(pending);hide();if(parameterPopup&&installed)delay.restart();}}
         final KeyEventDispatcher popupKeys;
         private KeyEventDispatcher createPopupKeys(){return event->{
             JTextComponent target=text.get();
             if(!installed||target==null||event.getComponent()!=target||!popup.isVisible()||event.getID()!=KeyEvent.KEY_PRESSED)return false;
             int code=event.getKeyCode();
+            if(code==KeyEvent.VK_ENTER&&finishVariable()){event.consume();return true;}
             if(code==KeyEvent.VK_ESCAPE){dismiss();event.consume();return true;}
             if(parameterPopup||list.getSelectedValue()!=null&&"info".equals(list.getSelectedValue().get("kind")))return false;
             if(code==KeyEvent.VK_DOWN||code==KeyEvent.VK_UP){int next=list.getSelectedIndex()+(code==KeyEvent.VK_DOWN?1:-1);list.setSelectedIndex(Math.max(0,Math.min(model.size()-1,next)));list.ensureIndexIsVisible(list.getSelectedIndex());event.consume();return true;}
@@ -209,6 +211,7 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
         }
         private void requestAutomatic() {
             JTextComponent target=text.get();if(target==null)return;
+            if(variableTemplate!=null&&variableTemplate.contains(target))return;
             String operation=automaticOperation(target.getText(),target.getCaretPosition(),parameterPopup);
             if(operation==null){parameterPopup=false;hide();return;}
             request(operation,false);
@@ -257,8 +260,9 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
                 edit(t->JavaEditing.typePair(t,delimiter));
                 if(delimiter=='(')request("parameters",false);
             });
-            bind("BACK_SPACE",()->{final boolean[] handled={false};edit(t->handled[0]=JavaEditing.backspacePair(t));if(!handled[0])originalAction(target,KeyStroke.getKeyStroke("BACK_SPACE"));});
-            bind("ENTER",()->{final boolean[] handled={false};edit(t->handled[0]=JavaEditing.enterPair(t));if(!handled[0])originalAction(target,KeyStroke.getKeyStroke("ENTER"));});
+            bind("BACK_SPACE",()->{if(variableTemplate!=null&&variableTemplate.contains(target)){originalAction(target,KeyStroke.getKeyStroke("BACK_SPACE"));return;}final boolean[] handled={false};edit(t->handled[0]=JavaEditing.backspacePair(t));if(!handled[0])originalAction(target,KeyStroke.getKeyStroke("BACK_SPACE"));});
+            bind("ENTER",()->{if(finishVariable())return;final boolean[] handled={false};edit(t->handled[0]=JavaEditing.enterPair(t));if(!handled[0])originalAction(target,KeyStroke.getKeyStroke("ENTER"));});
+            bind("ESCAPE",()->{if(variableTemplate!=null){variableTemplate=null;dismiss();target.setCaretPosition(target.getSelectionEnd());}else originalAction(target,KeyStroke.getKeyStroke("ESCAPE"));});
             bind("TAB",()->{
                 String before=target.getText().substring(0,target.getCaretPosition());
                 if(before.matches("(?s).*\\.(new|sout|return|nn|null|if|not|var)$")&&JavaEditing.codeAt(target.getText(),target.getCaretPosition())){request("postfix",true);return;}
@@ -284,11 +288,11 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
         }
         private void edit(Consumer<JTextComponent> change) {
             JTextComponent target=text.get();if(target==null||!target.isEditable()||!target.isEnabled())return;
-            dismiss();editing=true;
+            variableTemplate=null;dismiss();editing=true;
             try{JavaEditing.atomic(target,()->change.accept(target));}finally{editing=false;}
         }
-        @Override public void insertUpdate(DocumentEvent e){changed();}
-        @Override public void removeUpdate(DocumentEvent e){changed();}
+        @Override public void insertUpdate(DocumentEvent e){if(variableTemplate!=null&&!variableTemplate.update(e,true))variableTemplate=null;changed();}
+        @Override public void removeUpdate(DocumentEvent e){if(variableTemplate!=null&&!variableTemplate.update(e,false))variableTemplate=null;changed();}
         @Override public void changedUpdate(DocumentEvent e){}
         private void changed(){
             generation++;
@@ -487,7 +491,7 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
                 boolean call=item.containsKey("call")||item.get("kind").equals("postfix")&&item.get("name").equals("new");
                 if(call){
                     String stem=insert.endsWith("()")?insert.substring(0,insert.length()-2):insert;
-                    JavaEditing.CallInsertion plan=JavaEditing.callInsertion(snapshot,finish,stem,!"method".equals(item.get("call")));
+                    JavaEditing.CallInsertion plan=JavaEditing.callInsertion(snapshot,finish,stem,!"method".equals(item.get("call")),!"false".equals(item.get("parametersExpected")));
                     insert=plan.text;finish=plan.end;cursor=plan.caret;call=plan.parameters;
                 }
                 if(item.get("kind").equals("postfix")&&(insert.endsWith(";")||"true".equals(item.get("statement")))&&finish<snapshot.length()&&snapshot.charAt(finish)==';')finish++;
@@ -497,10 +501,20 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
                     for(String name:item.getOrDefault("imports","").split("\n"))if(!name.isBlank())JavaUnitImports.add(editor,name);
                     if(!item.containsKey("unitReference")&&qualified!=null&&!qualified.isEmpty()&&editor.getClientProperty(CustomJavaModel.DOCUMENT) instanceof Map&&!value.equals(qualified)&&!value.equals("new "+qualified+"()"))JavaUnitImports.add(editor,qualified);
                 });
+                if("postfix".equals(item.get("kind"))&&"var".equals(item.get("name"))&&item.containsKey("selectionStart")){
+                    // Imports may have shifted the declaration; the preserved selection is authoritative.
+                    int nameStart=target.getSelectionStart(),nameEnd=target.getSelectionEnd();
+                    variableTemplate=new JavaVariableTemplate(target.getDocument(),nameStart,nameEnd,nameEnd+value.length()-position);
+                }
                 if(item.containsKey("imports")&&!item.containsKey("unitReference"))rememberGeneratedImports();
                 if(call)request("parameters",false);
                 if(qualified!=null&&!qualified.isEmpty())organizeImports(false);
             }catch(Throwable error){failure(error,true);}
+        }
+        private boolean finishVariable(){
+            JTextComponent target=text.get();JavaVariableTemplate template=variableTemplate;
+            if(template==null||target==null||!template.valid(target)){variableTemplate=null;return false;}
+            edit(editor->JavaEditing.finishVariable(editor,template.statementEnd));return true;
         }
         private void rememberGeneratedImports(){
             // Keep generated imports in the same undo step. A later timer must not add a
@@ -534,7 +548,7 @@ final class JavaEditorAssist implements AutoCloseable,AWTEventListener {
         void hide(){popup.setVisible(false);}
         void dismiss(){parameterPopup=false;generation++;delay.stop();cancelAnalysis(pending);hide();}
         private void uninstall(JTextComponent target) {
-            installed=false;dismiss();importDelay.stop();observedImports=null;observedCode.clear();
+            installed=false;variableTemplate=null;dismiss();importDelay.stop();observedImports=null;observedCode.clear();
             if(generationMenu!=null)generationMenu.setVisible(false);if(generationDialog!=null)generationDialog.dispose();
             diagnosticDelay.stop();diagnosticGeneration++;diagnosticInput=null;cancelAnalysis(diagnosticPending);
             if(diagnostics!=null)diagnostics.clear();

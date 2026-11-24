@@ -139,7 +139,22 @@ function Get-ClientEnhancementStatus([string]$LucanetHome,[string]$LogDirectory=
     $processes=@(Get-SoftwareManagerProcesses $root)
     $managerRunning=@($processes|Where-Object {$_.Matched -and $_.Name -ieq 'LucaNetSoftwareManager'}).Count -gt 0
     $unknown=@($processes|Where-Object {-not $_.Matched}).Count -gt 0
-    if(-not $LogDirectory){$LogDirectory=Join-Path ([Environment]::GetFolderPath('UserProfile')) '.lucanet-exit-enhancement\logs'}
+    if(-not $LogDirectory){
+        $LogDirectory=Join-Path ([Environment]::GetFolderPath('UserProfile')) '.lucanet-cilent-enhancement\log'
+        $featureFile=Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Lucanet\ClientEnhancement\features.properties'
+        if(Test-Path -LiteralPath $featureFile -PathType Leaf){
+            try{
+                foreach($setting in [IO.File]::ReadAllLines($featureFile,[Text.Encoding]::UTF8)){
+                    if($setting.Trim() -match '^enhancementLogDirectory=(.+)$'){
+                        $candidateDirectory=$Matches[1].Trim()
+                        if($candidateDirectory -eq '~'){$candidateDirectory=[Environment]::GetFolderPath('UserProfile')}
+                        elseif($candidateDirectory.StartsWith('~/') -or $candidateDirectory.StartsWith('~\')){$candidateDirectory=Join-Path ([Environment]::GetFolderPath('UserProfile')) $candidateDirectory.Substring(2)}
+                        if([IO.Path]::IsPathRooted($candidateDirectory)){$LogDirectory=[IO.Path]::GetFullPath($candidateDirectory)}
+                    }
+                }
+            }catch{Write-Verbose 'Log directory setting is temporarily unavailable.'}
+        }
+    }
     $loaded=@();$latestExit=$null;$latestSuppressed=$null;$runtimeErrors=@()
     # 仅选择日志中 Agent 路径匹配本安装目录的记录；历史记录与当前运行证据分开。
     foreach($file in Get-ChildItem -LiteralPath $LogDirectory -Filter 'client-exit-*.log' -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 24){

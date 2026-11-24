@@ -63,4 +63,32 @@ final class FeatureSettings {
         try { int value=Integer.parseInt(load().getProperty("javaCompletionFontSize","").trim());return value>=12&&value<=30?value:DEFAULT_JAVA_FONT_SIZE; }
         catch(Exception failure){return DEFAULT_JAVA_FONT_SIZE;}
     }
+    static final String DEFAULT_ARCHIVE_DIRECTORY=Path.of(System.getProperty("user.home"),".lucanet-exit-enhancement","archive").toString();
+    static final String DEFAULT_LOG_DIRECTORY=Path.of(System.getProperty("user.home"),".lucanet-cilent-enhancement","log").toString();
+    static final int DEFAULT_RETENTION_DAYS=7, MAX_RETENTION_DAYS=36500;
+    static final class StoragePreferences {
+        final boolean enabled;final Path directory;final int days;
+        StoragePreferences(boolean enabled,Path directory,int days){this.enabled=enabled;this.directory=directory;this.days=days;}
+    }
+    static StoragePreferences archive(){return storage("archive",DEFAULT_ARCHIVE_DIRECTORY,"lucanet.exit.archiveDir");}
+    static StoragePreferences logs(){return storage("enhancementLog",DEFAULT_LOG_DIRECTORY,"lucanet.exit.logDir");}
+    private static StoragePreferences storage(String prefix,String defaultDirectory,String override){
+        Properties settings;
+        try{settings=load();}catch(Exception unavailable){return new StoragePreferences(false,expandDirectory(defaultDirectory),DEFAULT_RETENTION_DAYS);}
+        String configured=System.getProperty(override);
+        if(configured==null||configured.isBlank())configured=settings.getProperty(prefix+"Directory",defaultDirectory);
+        Path directory;
+        try{directory=expandDirectory(configured);}catch(RuntimeException invalid){directory=expandDirectory(defaultDirectory);}
+        int days=DEFAULT_RETENTION_DAYS;
+        try{int value=Integer.parseInt(settings.getProperty(prefix+"RetentionDays","").trim());if(value>=1&&value<=MAX_RETENTION_DAYS)days=value;}catch(NumberFormatException ignored){}
+        return new StoragePreferences(Boolean.parseBoolean(settings.getProperty(prefix+"Enabled","true").trim()),directory,days);
+    }
+    static Path expandDirectory(String value){
+        String path=value.trim();
+        if(path.equals("~"))path=System.getProperty("user.home");
+        else if(path.startsWith("~/")||path.startsWith("~\\"))path=Path.of(System.getProperty("user.home"),path.substring(2)).toString();
+        Path result=Path.of(path);
+        if(!result.isAbsolute())throw new IllegalArgumentException("Storage directory must be absolute or start with ~/.");
+        return result.normalize();
+    }
 }

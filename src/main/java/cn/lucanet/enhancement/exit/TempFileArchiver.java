@@ -161,10 +161,12 @@ final class TempFileArchiver {
                 }
                 String prefix = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
                         + "-pid" + ProcessHandle.current().pid() + "-";
-                runDirectory = Files.createTempDirectory(realBase, prefix).toRealPath();
-                if (!runDirectory.startsWith(realBase) || runDirectory.startsWith(root)) {
-                    throw new IOException("Invalid archive run directory: " + runDirectory);
+                Path candidate = Files.createTempDirectory(realBase, prefix).toRealPath();
+                if (!candidate.startsWith(realBase) || candidate.startsWith(root)) {
+                    throw new IOException("Invalid archive run directory: " + candidate);
                 }
+                StorageRetention.markArchive(candidate);
+                runDirectory=candidate;
             }
             return runDirectory;
         }

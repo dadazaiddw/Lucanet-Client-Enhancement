@@ -159,7 +159,7 @@ internal sealed partial class EnhancementForm {
         var reset=NavigationButton("恢复默认设置","resetFeatureSettings");
         tips.SetToolTip(reset,"恢复功能及状态刷新默认值，保留更新设置。");
         reset.Click += delegate { autoRefresh.Checked = true; refreshSeconds.Value = 8; linksInNewWindow.Checked = true;
-            customJavaTypes.Checked=false;javaEditorAssist.Checked=true;javaCompletionFontSize.Value=FeatureSettingsStore.DefaultJavaFontSize;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences(); };
+            customJavaTypes.Checked=false;javaEditorAssist.Checked=true;javaCompletionFontSize.Value=FeatureSettingsStore.DefaultJavaFontSize;nativeSceneDialogFrame.Checked=true;scriptDoubleClick.Checked=true;hideScriptStart.Checked=true;scriptShortcut.Shortcut="ALT+R";SaveScriptSettings();SaveRefreshPreferences();foreach(Action resetAction in resetStorage)resetAction(); };
         sidebar.Controls.Add(reset,0,8);
     }
 
@@ -326,6 +326,7 @@ internal sealed partial class EnhancementForm {
         };
         AddAutoRow(dialogCard,SettingRow("使用系统边框和关闭按钮","与脚本运行窗口一致，默认开启；已打开的场景对话框也会实时更新。",nativeSceneDialogFrame));
         AddAutoRow(stack,dialogCard);
+        BuildStorageSettings(stack,false);BuildStorageSettings(stack,true);
     }
 
     private void BuildCodeSettings() {

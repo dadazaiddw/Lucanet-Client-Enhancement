@@ -101,6 +101,8 @@ lucanet-client-enhancement/
 | 界面 | 隐藏脚本“开始”按钮 | 开启 |
 | 界面 | “开始”快捷键 | Alt+R |
 | 界面 | 场景对话框使用系统边框和关闭按钮 | 开启 |
+| 界面 | 临时文件归档 | 开启；`%USERPROFILE%\.lucanet-exit-enhancement\archive`；保留 7 天 |
+| 界面 | 保存增强插件日志 | 开启；`%USERPROFILE%\.lucanet-cilent-enhancement\log`；保留 7 天 |
 | 代码 | 自定义 Java 类型 | 关闭 |
 | 代码 | Java 编码辅助 | 开启 |
 | 代码 | 字号 | 20，可调整为 12–30 |
@@ -153,7 +155,7 @@ lucanet-client-enhancement/
 
 补全结合当前未保存代码、方法参数、类成员、同一脚本 Class 树内的自定义类型，以及 Lucanet 已加载的 Administrator 额外应用程序库，支持局部变量、静态成员、泛型和链式调用。候选显示类型图标、泛型声明、来源包名及返回类型；选中被省略的长签名时展开完整内容，屏幕宽度不足时换行显示。
 
-选择方法候选或 `new` 后的类型候选时自动补齐 `()`，包括无参方法，光标进入括号内。已有括号、参数和构造器泛型参数会保留；声明类型时只插入类型名。`对象::方法`、`类型::方法` 的方法引用补全保留引用语法。
+选择方法候选或 `new` 后的类型候选时自动补齐 `()`。方法没有可访问的有参重载时，光标停在 `()` 后；存在有参重载时进入括号内。构造方法保持进入括号内。已有括号、参数和构造器泛型参数会保留；声明类型时只插入类型名。`对象::方法`、`类型::方法` 的方法引用补全保留引用语法。
 
 输入 `(` 或 `,` 自动提示方法或构造器参数；在调用括号内按 **Ctrl+P** 可手动查看。参数提示区分可访问的重载，并高亮当前参数。开始输入参数表达式时，优先显示变量、类和成员补全；需要继续查看签名时再次按 Ctrl+P。
 
@@ -266,6 +268,8 @@ public int hashCode() {
 
 `.var` 用于方法或代码块中的独立表达式，按 **Tab** 展开，也可选择补全候选。不适用于 `void` 调用、单独的 `null` 或只能放单条语句的位置；已有分号会合并，展开与变量名选中一起支持一次撤销。
 
+展开后直接按 **Enter** 确认自动生成的变量名，在声明之后新建空行并将光标移到该行缩进处；也可先输入其他名称，再按 Enter 确认。按 Esc 或将光标移出变量名结束确认状态，随后恢复普通编辑行为。
+
 类型推断保留基本类型、数组和泛型，例如 `List.of("x").var` 会生成 `List<String> strings = List.of("x");`；变量名结合 getter、调用名称、数组或集合元素类型推断，遇到重名依次添加数字。匿名类和无法直接引用的内部类型使用可访问的父类、接口或通配符。完整源码窗口自动添加所需导入，类型重名时保留全限定名；原生方法编辑区使用已有导入或全限定名。无法可靠解析的表达式不生成声明。
 
 输入 `"`、`'`、`(`、`[`、`{` 时，在代码位置自动补上另一半并将光标放在中间。选中文本后输入左符号可包裹选区；再次输入已有右符号会越过它，空符号对内按 Backspace 一起删除。空花括号内按 Enter 会展开为缩进代码块。选区包裹、成对删除和展开换行均支持一次撤销；注释、字符串内容、文本块及粘贴内容按原文输入。
@@ -314,10 +318,22 @@ Financial Client 和 Administrator 出现“发现未知文件”提示时，增
 归档针对 Lucanet 当前客户端的临时目录，不扫描整个 Windows TEMP。默认保存位置：
 
 ```text
-%USERPROFILE%\LucaNet-exit-archive\日期时间-pid进程号-随机值\原相对路径
+%USERPROFILE%\.lucanet-exit-enhancement\archive\日期时间-pid进程号-随机值\原相对路径
 ```
 
 每次退出创建独立目录，保留子目录结构，不覆盖已有归档。需要时可从中取回文件。强制结束进程、崩溃或断电时，不保证执行正常退出归档。
+
+在 **设置 → 界面 → 临时文件归档** 中设置开关、默认保存目录和保留天数。默认目录动态读取当前 Windows 用户的主目录，界面显示实际完整路径，例如 `C:\Users\用户名\.lucanet-exit-enhancement\archive`；恢复默认设置时同样使用当前用户目录。旧配置中的 `~/` 会自动展开显示，也支持完整 Windows 路径和网络共享路径，或点击“浏览…”。输入目录后按 Enter 或离开输入框保存；开关和天数修改后自动保存。关闭归档后恢复原生临时文件弹窗，并停止归档和清理。
+
+归档默认保留 **7 天**，可设为 1–36500 天，从归档生成时计算；正常运行时定期检查过期文件，修改设置通常在 2 秒内应用。只清理本插件带归属标记的过期批次，跳过仍在运行的进程及链接目录。旧版无标记归档保留供手动整理，批次旁的 `.lucanet-enhancement-archive` 文件用于确认归属和生成时间。
+
+### 增强插件日志
+
+在 **设置 → 界面 → 增强插件日志** 中设置保存开关、目录和保留天数。默认目录为当前 Windows 用户主目录下的 `.lucanet-cilent-enhancement\log`（即 `%USERPROFILE%\.lucanet-cilent-enhancement\log`），界面显示实际完整路径，默认保留 **7 天**。运行中的记录直接写入所选目录，正常退出后保留供排查；修改目录后下一条记录使用新目录，关闭后停止新增记录和过期清理。
+
+日志保留时间按最后写入时间计算，仅清理确认属于插件且进程已退出的过期日志。切换目录不会搬移已有归档或日志；只有当前所选目录参与自动清理。路径无法写入时归档源文件保留，日志写入错误输出，便于排查权限问题。
+
+配置文件中的对应项为 `archiveEnabled`、`archiveDirectory`、`archiveRetentionDays`，以及 `enhancementLogEnabled`、`enhancementLogDirectory`、`enhancementLogRetentionDays`。手动编辑目录请使用 `/` 分隔符或将 `\` 写为 `\\`；管理器会自动转换。启动参数 `lucanet.exit.archiveDir` / `lucanet.exit.logDir` 若显式指定，将优先于界面目录设置。
 
 ## 更新与卸载
 
@@ -349,11 +365,11 @@ Financial Client 和 Administrator 出现“发现未知文件”提示时，增
 | 内容 | 默认位置 |
 | --- | --- |
 | 已安装增强及配置备份 | `<Lucanet 安装目录>\.client-enhancement\`，备份位于其 `backups` 子目录 |
-| 功能开关、快捷键及字号 | `%LOCALAPPDATA%\Lucanet\ClientEnhancement\features.properties` |
+| 功能开关、快捷键、字号及保存设置 | `%LOCALAPPDATA%\Lucanet\ClientEnhancement\features.properties` |
 | 管理器刷新及更新偏好 | `%LOCALAPPDATA%\Lucanet\ClientEnhancement\ui.json` |
 | 下载更新缓存 | `%LOCALAPPDATA%\Lucanet\ClientEnhancement\updates\` |
-| 临时文件归档 | `%USERPROFILE%\LucaNet-exit-archive\` |
-| Java 增强诊断日志 | `%USERPROFILE%\.lucanet-exit-enhancement\logs\` |
+| 临时文件归档 | `%USERPROFILE%\.lucanet-exit-enhancement\archive\` |
+| Java 增强诊断日志 | `%USERPROFILE%\.lucanet-cilent-enhancement\log\` |
 
 增强模块安装后独立保存在 Lucanet 目录，客户端日常运行不依赖下载缓存；仍从缓存启动增强管理器时，需要保留该管理器所在的完整运行目录。
 

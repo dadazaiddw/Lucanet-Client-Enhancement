@@ -46,7 +46,7 @@ internal sealed class GuiSettingsStore {
 }
 
 // 与 Java 端共享的即时配置，独立于窗口/刷新偏好，避免刷新设置覆盖功能开关。
-internal sealed class FeatureSettingsStore {
+internal sealed partial class FeatureSettingsStore {
     private readonly string path;
     internal FeatureSettingsStore(string path) { this.path = path; }
     internal bool LoadLinksInNewWindow() {

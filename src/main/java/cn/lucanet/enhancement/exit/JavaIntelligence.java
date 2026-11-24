@@ -160,12 +160,19 @@ public final class JavaIntelligence implements Function<Map<String,Object>,List<
             if(!member && !imports)for(String keyword:("abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for if implements import instanceof int interface long native new null package private protected public return short static strictfp super switch synchronized this throw throws transient true false try void volatile while var").split(" "))
                 if(matches(keyword,prefix))add(result,keyword,keyword+" — Java",keyword,"","keyword",keyword.length());
             List<Map<String,String>> values = new ArrayList<>(result.values());
+            Set<String> parameterizedMethods=new HashSet<>();
+            for(Map<String,String> value:values)
+                if("method".equals(value.get("kind"))&&!"0".equals(value.get("parameterCount")))parameterizedMethods.add(value.get("name"));
             for(Map<String,String> value:values){
                 if(constructor&&!imports&&(value.get("kind").equals("class")||value.get("kind").equals("interface"))){
                     value.put("call","constructor");value.put("insert",value.get("name")+"()");value.put("caret",String.valueOf(value.get("name").length()+1));
                 }else if(value.get("kind").equals("method")){
                     if(methodReference){value.put("insert",value.get("name"));value.put("caret",String.valueOf(value.get("name").length()));}
-                    else value.put("call","method");
+                    else {
+                        boolean parameters=parameterizedMethods.contains(value.get("name"));
+                        value.put("call","method");value.put("parametersExpected",String.valueOf(parameters));
+                        value.put("caret",String.valueOf(value.get("name").length()+(parameters?1:2)));
+                    }
                 }
             }
             values.removeIf(value -> !matches(value.get("name"), prefix));

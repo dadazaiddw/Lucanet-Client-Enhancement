@@ -182,6 +182,29 @@ final class JavaEditing {
         final String text;final int end,caret;final boolean parameters;
         CallInsertion(String text,int end,int caret,boolean parameters){this.text=text;this.end=end;this.caret=caret;this.parameters=parameters;}
     }
+    static CallInsertion callInsertion(String source,int end,String stem,boolean constructor,boolean parametersExpected){
+        CallInsertion plan=callInsertion(source,end,stem,constructor);
+        if(parametersExpected||!plan.parameters)return plan;
+        String completed=mask(plan.text+source.substring(plan.end));int depth=1;
+        for(int at=plan.caret;at<completed.length();at++){
+            char c=completed.charAt(at);
+            if(c=='(')depth++;
+            else if(c==')'&&--depth==0)return new CallInsertion(plan.text,plan.end,at+1,false);
+        }
+        return plan;
+    }
+    static void finishVariable(JTextComponent editor,int statementEnd){
+        String source=editor.getText();int end=lineEnd(source,statementEnd);
+        String tail=source.substring(statementEnd,end);
+        if(tail.isBlank()||tail.stripLeading().startsWith("//")){
+            editor.setCaretPosition(end);newLine(editor);return;
+        }
+        String line=source.substring(lineStart(source,statementEnd),statementEnd);
+        String indent=line.substring(0,line.length()-line.stripLeading().length()),breakLine=newline(source);
+        // A following statement/closing brace stays on its own line, after the new blank line.
+        replace(editor,statementEnd,statementEnd,breakLine+indent+breakLine+indent);
+        editor.setCaretPosition(statementEnd+breakLine.length()+indent.length());
+    }
     /** Reuses existing type arguments, trivia and call arguments without replacing the latter. */
     static CallInsertion callInsertion(String source,int end,String stem,boolean constructor){
         int next=triviaEnd(source,end),genericEnd=end;

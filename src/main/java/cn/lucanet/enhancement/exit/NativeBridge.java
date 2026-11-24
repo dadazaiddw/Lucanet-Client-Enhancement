@@ -44,13 +44,14 @@ public final class NativeBridge {
         if (!isDesktopClient(application.getClassLoader()) || !ARCHIVING.get(application).compareAndSet(false, true)) { return; }
         try {
             if (!state(application).equals("RUNNING")) { return; }
+            FeatureSettings.StoragePreferences settings=FeatureSettings.archive();
+            if(!settings.enabled)return;
             EnhancementLog.info("EXIT_ARCHIVE_BEGIN");
             Object paths = application.getMethod("getApplicationPaths").invoke(null);
             Class<?> pathsType = Class.forName("ln.application.ApplicationPathes", false, application.getClassLoader());
             File directory = (File) pathsType.getMethod("getTempDir").invoke(paths);
-            Path archive = Path.of(System.getProperty("lucanet.exit.archiveDir",
-                    Path.of(System.getProperty("user.home"), "LucaNet-exit-archive").toString()));
-            TempFileArchiver.archiveAllFiles(directory == null ? null : directory.toPath(), archive);
+            TempFileArchiver.archiveAllFiles(directory == null ? null : directory.toPath(), settings.directory);
+            StorageRetention.archives(settings.directory,settings.days);
             EnhancementLog.info("EXIT_ARCHIVE_FINISHED");
         } catch (Exception | LinkageError failure) {
             // 无法归档的文件保留在原处。后面的退出弹窗处理仍可静默返回“保留”。
@@ -69,6 +70,7 @@ public final class NativeBridge {
     public static boolean suppressTemporaryFileDialog(Class<?> dialogClass) {
         try {
             if (!isDesktopClient(dialogClass.getClassLoader())) { return false; }
+            if (!FeatureSettings.archive().enabled) { return false; }
         } catch (RuntimeException | LinkageError failure) {
             // 无法确认客户端身份时保留原行为，不能扩大到 Manager/服务端等进程。
             EnhancementLog.error("DIALOG_CLIENT_UNAVAILABLE", failure);

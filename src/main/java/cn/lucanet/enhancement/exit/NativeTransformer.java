@@ -35,6 +35,12 @@ final class NativeTransformer implements ClassFileTransformer {
     private static final String DIALOG_DESCRIPTOR = "(Lln/ui_x/XWindow;Lcom/lucanet/lisa/ui/UIContext;Ljava/lang/String;)L" + RESULT + ";";
     private final Instrumentation instrumentation;
     private volatile String failure;
+    private boolean storageMaintenance;
+    synchronized void ensureStorageMaintenance(){
+        if(storageMaintenance)return;
+        storageMaintenance=true;
+        StorageMaintenance.start(()->JavaEditorAssist.isCurrent(this),()->{synchronized(this){storageMaintenance=false;}});
+    }
     void verifyTransformations() {
         if (failure != null) { throw new IllegalStateException(failure); }
     }
@@ -51,6 +57,7 @@ final class NativeTransformer implements ClassFileTransformer {
     public byte[] transform(Module module, ClassLoader loader, String name, Class<?> redefining,
                             ProtectionDomain domain, byte[] bytes) {
         if (!isTarget(name)) { return null; }
+        ensureStorageMaintenance();
         try {
             if(CustomJavaTransformer.target(name)) {
                 if(!NativeBridge.isDesktopClient(loader))return null;

@@ -14,6 +14,7 @@ public final class RuntimeModule implements AgentModule {
     public boolean isTarget(String name) { return NativeTransformer.isTarget(name); }
     public void verifyTransformations() { transformer.verifyTransformations(); }
     public Object invoke(String operation, Object[] args) {
+        transformer.ensureStorageMaintenance();
         switch (operation) {
             case "beforeStop": NativeBridge.beforeStop((Class<?>) args[0]); return null;
             case "augmentConfiguration": return NativeBridge.augmentConfiguration((String) args[0]);
